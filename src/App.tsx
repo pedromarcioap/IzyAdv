@@ -173,16 +173,20 @@ export default function App() {
     <div
       style={
         {
+          '--theme-bg': activeTheme.bgTone,
           '--theme-primary': activeTheme.primaryTone,
+          '--theme-primary-hover': activeTheme.primaryHover,
           '--theme-card': activeTheme.cardTone,
           '--theme-surface': activeTheme.surfaceTone,
           '--theme-border': activeTheme.borderTone,
           '--theme-gold': activeTheme.goldTone,
           '--theme-gold-antique': activeTheme.goldAntique,
           '--theme-button-gradient': activeTheme.gradientButton,
+          '--theme-text-main': activeTheme.textMain,
+          '--theme-text-muted': activeTheme.textMuted,
         } as React.CSSProperties
       }
-      className="min-h-screen flex flex-col bg-[#0B0305] text-[#FDF9F3] font-body-default antialiased selection:bg-[#D4AF37] selection:text-[#0B0305]"
+      className="min-h-screen flex flex-col bg-[var(--theme-bg)] text-[var(--theme-text-main)] font-body-default antialiased selection:bg-[var(--theme-gold)] selection:text-[var(--theme-bg)] transition-colors duration-300"
     >
       {/* Sovereign Top Strip */}
       <TopStatusStrip

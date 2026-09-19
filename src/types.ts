@@ -2,13 +2,17 @@ export interface ColorThemePreset {
   id: 'bordeaux' | 'esmeralda' | 'safira' | 'obsidiana' | 'purpura' | 'custom';
   name: string;
   badgeLabel: string;
+  bgTone: string;
   primaryTone: string;
+  primaryHover: string;
   cardTone: string;
   surfaceTone: string;
   borderTone: string;
   goldTone: string;
   goldAntique: string;
   gradientButton: string;
+  textMain: string;
+  textMuted: string;
 }
 
 export interface FirmConfig {
@@ -18,11 +22,13 @@ export interface FirmConfig {
   oabRegistry: string;
   colorThemeId: 'bordeaux' | 'esmeralda' | 'safira' | 'obsidiana' | 'purpura' | 'custom';
   customColors?: {
+    bgTone?: string;
     primaryTone: string;
     cardTone: string;
     surfaceTone: string;
     borderTone: string;
     goldTone: string;
+    goldAntique?: string;
   };
   sedes: {
     sp: {

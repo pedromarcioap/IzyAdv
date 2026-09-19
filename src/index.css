@@ -1,36 +1,54 @@
 @import "tailwindcss";
 
 :root {
+  --theme-bg: #0B0305;
   --theme-primary: #581825;
+  --theme-primary-hover: #7B1D2E;
   --theme-card: #13060A;
   --theme-surface: #180A0E;
   --theme-border: #431520;
   --theme-gold: #D4AF37;
   --theme-gold-antique: #C5A880;
   --theme-button-gradient: linear-gradient(to right, #7B1D2E, #5C1320, #3E0C15);
+  --theme-text-main: #FDF9F3;
+  --theme-text-muted: #A79388;
+}
+
+@theme {
+  --color-theme-bg: var(--theme-bg);
+  --color-theme-primary: var(--theme-primary);
+  --color-theme-primary-hover: var(--theme-primary-hover);
+  --color-theme-card: var(--theme-card);
+  --color-theme-surface: var(--theme-surface);
+  --color-theme-border: var(--theme-border);
+  --color-theme-gold: var(--theme-gold);
+  --color-theme-gold-antique: var(--theme-gold-antique);
+  --color-theme-text-main: var(--theme-text-main);
+  --color-theme-text-muted: var(--theme-text-muted);
 }
 
 @layer base {
   html, body {
     margin: 0;
     padding: 0;
-    background-color: #0B0305;
-    color: #FDF9F3;
+    background-color: var(--theme-bg, #0B0305);
+    color: var(--theme-text-main, #FDF9F3);
     font-family: 'Plus Jakarta Sans', sans-serif;
+    transition: background-color 0.4s ease, color 0.4s ease;
   }
   
   ::-webkit-scrollbar {
     width: 6px;
   }
   ::-webkit-scrollbar-track {
-    background: #0E0407;
+    background: var(--theme-bg, #0B0305);
   }
   ::-webkit-scrollbar-thumb {
-    background: var(--theme-border, #2E121B);
+    background: var(--theme-border, #431520);
     border-radius: 3px;
   }
   ::-webkit-scrollbar-thumb:hover {
-    background: var(--theme-primary, #4D1A27);
+    background: var(--theme-gold, #D4AF37);
   }
 }
 

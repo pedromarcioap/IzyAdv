@@ -24,7 +24,7 @@ import {
   AlertCircle,
 } from 'lucide-react';
 import { FirmConfig, IntakeProtocol, PracticeArea, LawReviewArticle, AdminUser } from '../types';
-import { COLOR_THEME_PRESETS, getActiveTheme } from '../data/colorThemes';
+import { COLOR_THEME_PRESETS, getActiveTheme, getContrastRatio } from '../data/colorThemes';
 import {
   isSupabaseConfigured,
   dbFetchAdminUsers,
@@ -653,6 +653,43 @@ export const CmsAdminDrawer: React.FC<CmsAdminDrawerProps> = ({
                     </div>
                   </div>
                 </div>
+
+                {/* WCAG Accessibility & Contrast Feedback */}
+                {(() => {
+                  const textRatio = getContrastRatio('#FDF9F3', customColors.cardTone);
+                  const goldRatio = getContrastRatio(customColors.goldTone, customColors.cardTone);
+                  return (
+                    <div className="pt-3 border-t border-[#431520] grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs font-data-mono">
+                      <div className="p-2.5 rounded bg-[#0B0305] border border-[#431520] flex items-center justify-between">
+                        <div>
+                          <div className="text-[10px] text-[#A79388] uppercase">Contraste Texto Principal</div>
+                          <div className="text-sm font-bold text-[#FDF9F3]">{textRatio}:1</div>
+                        </div>
+                        <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                          textRatio >= 7 ? 'bg-emerald-950 text-emerald-300 border border-emerald-800' :
+                          textRatio >= 4.5 ? 'bg-blue-950 text-blue-300 border border-blue-800' :
+                          'bg-rose-950 text-rose-300 border border-rose-800'
+                        }`}>
+                          {textRatio >= 7 ? 'WCAG AAA' : textRatio >= 4.5 ? 'WCAG AA' : 'Baixo Contraste'}
+                        </span>
+                      </div>
+
+                      <div className="p-2.5 rounded bg-[#0B0305] border border-[#431520] flex items-center justify-between">
+                        <div>
+                          <div className="text-[10px] text-[#A79388] uppercase">Contraste Dourado / Fundo</div>
+                          <div className="text-sm font-bold" style={{ color: customColors.goldTone }}>{goldRatio}:1</div>
+                        </div>
+                        <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                          goldRatio >= 4.5 ? 'bg-emerald-950 text-emerald-300 border border-emerald-800' :
+                          goldRatio >= 3 ? 'bg-amber-950 text-amber-300 border border-amber-800' :
+                          'bg-rose-950 text-rose-300 border border-rose-800'
+                        }`}>
+                          {goldRatio >= 4.5 ? 'WCAG AA' : goldRatio >= 3 ? 'Grande Porte AA' : 'Alerta Contraste'}
+                        </span>
+                      </div>
+                    </div>
+                  );
+                })()}
               </div>
             </div>
           )}
