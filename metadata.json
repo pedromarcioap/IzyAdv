@@ -1,0 +1,6 @@
+{
+  "name": "Veritas & Lex - Advocacia & Consultoria",
+  "description": "Banca jurídica de intervenção de alta complexidade perante tribunais superiores, arbitragem internacional e portal White-Label soberano.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
