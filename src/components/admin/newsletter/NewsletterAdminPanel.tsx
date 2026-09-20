@@ -23,6 +23,7 @@ import type {
     AdminRole,
     CampaignMetricRow,
     DashboardSummary,
+    NewsletterAccess,
     NewsletterList,
     NewsletterSegment,
     RecentActivityEntry,
@@ -74,6 +75,13 @@ export interface NewsletterAdminPanelProps {
     isOpen: boolean;
     onClose: () => void;
     role: AdminRole | null;
+    /**
+     * Why the module is closed. Optional so the panel still renders inside
+     * stories/tests that only care about an authorised visitor.
+     */
+    access?: NewsletterAccess | null;
+    /** Re-runs the authorisation check; used by the "verificar novamente" button. */
+    onRetryAccess?: () => void;
 }
 
 type TabId = 'dashboard' | 'subscribers' | 'campaigns' | 'audiences' | 'settings';
@@ -590,7 +598,13 @@ function eventTone(type: string): 'neutral' | 'success' | 'warning' | 'danger' |
 // Shell
 // ---------------------------------------------------------------------------
 
-export const NewsletterAdminPanel: React.FC<NewsletterAdminPanelProps> = ({ isOpen, onClose, role }) => {
+export const NewsletterAdminPanel: React.FC<NewsletterAdminPanelProps> = ({
+    isOpen,
+    onClose,
+    role,
+    access = null,
+    onRetryAccess,
+}) => {
     const canWrite = role !== null && WRITE_ROLES.includes(role);
     const canAdmin = role === 'master_admin' || role === 'admin';
 
@@ -605,6 +619,9 @@ export const NewsletterAdminPanel: React.FC<NewsletterAdminPanelProps> = ({ isOp
     const tabs = useMemo(
         () =>
             ALL_TABS.filter((tab) => {
+                // No resolved role ⇒ no data to show. Rendering empty tabs behind
+                // an error banner only invites clicks that fail with 42501.
+                if (role === null) return false;
                 if (tab.adminOnly && !canAdmin) return false;
                 if (tab.id === 'subscribers' && !canWrite && role !== 'analyst') return false;
                 if (tab.id === 'campaigns' && !canWrite && role !== 'analyst') return false;
@@ -659,7 +676,13 @@ export const NewsletterAdminPanel: React.FC<NewsletterAdminPanelProps> = ({ isOp
                         <div>
                             <h1 className="font-serif text-lg text-[var(--theme-text-main)]">Informativo</h1>
                             <p className="text-[11px] text-[var(--theme-text-muted)]">
-                                {canWrite ? 'Acesso de edição' : canAdmin ? 'Acesso de leitura administrativa' : 'Acesso de leitura'}
+                                {role === null
+                                    ? 'Sem acesso ao módulo'
+                                    : canWrite
+                                        ? 'Acesso de edição'
+                                        : canAdmin
+                                            ? 'Acesso de leitura administrativa'
+                                            : 'Acesso de leitura'}
                             </p>
                         </div>
                     </div>
@@ -686,10 +709,34 @@ export const NewsletterAdminPanel: React.FC<NewsletterAdminPanelProps> = ({ isOp
 
                 <div ref={containerRef} tabIndex={-1} className="flex-1 overflow-y-auto p-5">
                     {role === null ? (
-                        <Alert tone="error">
-                            Sua conta não possui acesso ao módulo de newsletter. Um administrador precisa atribuir um perfil em
-                            Configurações › Usuários.
-                        </Alert>
+                        // access === null means the check is still in flight: showing
+                        // the denial banner first would report a failure that has not
+                        // happened yet.
+                        access === null ? (
+                            <Spinner label="Verificando seu acesso ao módulo" />
+                        ) : (
+                            <Alert tone="error">
+                                <div className="space-y-3">
+                                    <p className="font-semibold">{access.title}</p>
+                                    <p>{access.message}</p>
+                                    {access?.remediation ? (
+                                        <pre className="whitespace-pre-wrap rounded border border-[var(--theme-border)] bg-[var(--theme-bg)] p-3 font-data-mono text-[11px] text-[var(--theme-text-muted)]">
+                                            {access.remediation}
+                                        </pre>
+                                    ) : null}
+                                    {onRetryAccess ? (
+                                        <Button
+                                            size="sm"
+                                            variant="secondary"
+                                            onClick={onRetryAccess}
+                                            icon={<RefreshCw className="h-3.5 w-3.5" aria-hidden="true" />}
+                                        >
+                                            Verificar novamente
+                                        </Button>
+                                    ) : null}
+                                </div>
+                            </Alert>
+                        )
                     ) : (
                         <div
                             id={`panel-${activeTab}`}

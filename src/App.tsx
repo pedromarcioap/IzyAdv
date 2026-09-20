@@ -15,8 +15,8 @@ import { CmsAdminDrawer } from './components/CmsAdminDrawer';
 import { SupabaseAuthModal } from './components/SupabaseAuthModal';
 import { NewsletterAdminPanel } from './components/admin/newsletter/NewsletterAdminPanel';
 import { Mail } from 'lucide-react';
-import { currentAdminProfile, logActivity } from './lib/newsletter/config';
-import type { AdminRole } from './types/newsletter';
+import { logActivity, resolveNewsletterAccess } from './lib/newsletter/config';
+import type { AdminRole, NewsletterAccess } from './types/newsletter';
 
 import {
   initialFirmConfig,
@@ -67,8 +67,11 @@ export default function App() {
   // Newsletter back office. The role is resolved from public.admin_profiles on
   // open rather than from the session, because authorization lives in the
   // database and must be re-read rather than trusted from client state.
+  // `newsletterAccess` carries *why* the module is closed, so the panel can
+  // report the real missing precondition instead of a generic denial.
   const [isNewsletterOpen, setIsNewsletterOpen] = useState<boolean>(false);
   const [newsletterRole, setNewsletterRole] = useState<AdminRole | null>(null);
+  const [newsletterAccess, setNewsletterAccess] = useState<NewsletterAccess | null>(null);
   const [isFeeModalOpen, setIsFeeModalOpen] = useState<boolean>(false);
   const [selectedPartner, setSelectedPartner] = useState<PartnerDossier | null>(null);
   const [selectedArticle, setSelectedArticle] = useState<LawReviewArticle | null>(null);
@@ -132,15 +135,24 @@ export default function App() {
     setIsNewsletterOpen(true);
 
     try {
-      const profile = await currentAdminProfile();
-      setNewsletterRole(profile?.is_active ? profile.role : null);
+      const access = await resolveNewsletterAccess();
+      setNewsletterAccess(access);
+      // Only an active profile grants a role; 'inactive' returns the stored
+      // role for display purposes and must never unlock the panels.
+      setNewsletterRole(access.state === 'active' ? access.role : null);
 
-      if (!profile?.is_active) {
-        console.warn('Conta sem acesso administrativo ativo no módulo de newsletter.');
+      if (access.state !== 'active') {
+        console.warn(`Módulo de newsletter indisponível (${access.state}): ${access.message}`);
       }
     } catch (error) {
       console.warn('Não foi possível verificar o perfil de newsletter:', error);
       setNewsletterRole(null);
+      setNewsletterAccess({
+        state: 'query_failed',
+        role: null,
+        title: 'Falha inesperada ao verificar o acesso',
+        message: error instanceof Error ? error.message : 'erro desconhecido',
+      });
     }
   };
 
@@ -331,6 +343,8 @@ export default function App() {
           setIsNewsletterOpen(false);
         }}
         role={newsletterRole}
+        access={newsletterAccess}
+        onRetryAccess={handleOpenNewsletter}
       />
     </div>
   );

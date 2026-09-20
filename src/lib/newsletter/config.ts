@@ -11,12 +11,14 @@ import type {
     AdminProfile,
     AdminRole,
     AuditLogEntry,
+    NewsletterAccess,
     NewsletterList,
     NewsletterProvider,
     NewsletterSegment,
     NewsletterSettings,
     SegmentPreviewRow,
 } from '../../types/newsletter';
+import { isSupabaseConfigured } from '../supabase';
 import { getClient, run } from './client';
 
 // ---------------------------------------------------------------------------
@@ -343,6 +345,111 @@ export async function currentAdminProfile(): Promise<AdminProfile | null> {
 
     if (error) return null;
     return (data as AdminProfile | null) ?? null;
+}
+
+/** SQL an administrator runs once to promote the first master admin. */
+const PROMOTE_SQL = `update public.admin_profiles
+   set role = 'master_admin', is_active = true, accepted_at = now()
+ where email = 'seu@email.com';
+
+-- mantenha o app_metadata em sincronia (é o que o trigger lê em novos cadastros)
+update auth.users
+   set raw_app_meta_data = coalesce(raw_app_meta_data, '{}'::jsonb)
+                         || jsonb_build_object('newsletter_role', 'master_admin')
+ where email = 'seu@email.com';`;
+
+/**
+ * Resolves *why* the newsletter module is available — or why it is not.
+ *
+ * The previous gate answered every failure with the same sentence ("your
+ * account has no newsletter profile, ask an administrator"), even when the
+ * real cause was a missing VITE_SUPABASE_URL, a sandbox-only session or an
+ * intentionally deactivated profile. Each state below is actionable on its own
+ * and, where SQL is required, carries the exact statement to run.
+ *
+ * Never throws: this runs on UI open, so callers always render something.
+ */
+export async function resolveNewsletterAccess(): Promise<NewsletterAccess> {
+    if (!isSupabaseConfigured) {
+        return {
+            state: 'unconfigured',
+            role: null,
+            title: 'Supabase não está configurado nesta build',
+            message:
+                'Sem cliente Supabase não existe banco para consultar, então o módulo nega todo acesso. Defina VITE_SUPABASE_URL e VITE_SUPABASE_ANON_KEY (arquivo .env em desenvolvimento; variáveis de ambiente no ambiente publicado) e gere a build novamente.',
+        };
+    }
+
+    const client = getClient();
+
+    let userId: string | null = null;
+    try {
+        const { data } = await client.auth.getUser();
+        userId = data.user?.id ?? null;
+    } catch (error) {
+        return {
+            state: 'query_failed',
+            role: null,
+            title: 'Falha ao ler a sessão do Supabase',
+            message: error instanceof Error ? error.message : 'erro desconhecido ao ler a sessão',
+        };
+    }
+
+    if (!userId) {
+        return {
+            state: 'no_session',
+            role: null,
+            title: 'Não existe sessão Supabase ativa',
+            message:
+                'A autorização é lida de public.admin_profiles com auth.uid(); sem sessão não há identidade para autorizar. O login do CMS em modo local (sandbox, sem Supabase) não cria sessão. Entre novamente com uma conta criada em Authentication › Users.',
+        };
+    }
+
+    const { data, error } = await client
+        .from('admin_profiles')
+        .select('*')
+        .eq('user_id', userId)
+        .maybeSingle();
+
+    if (error) {
+        return {
+            state: 'query_failed',
+            role: null,
+            title: 'Falha ao consultar public.admin_profiles',
+            message: error.message,
+        };
+    }
+
+    if (!data) {
+        return {
+            state: 'no_profile',
+            role: null,
+            title: 'Sua conta não possui perfil no módulo de newsletter',
+            message: `A sessão existe (usuário ${userId}), mas public.admin_profiles não tem linha para ela. Isso acontece quando a conta foi criada antes das migrations ou fora do painel. Um master admin ou o SQL abaixo libera o acesso.`,
+            remediation: PROMOTE_SQL,
+        };
+    }
+
+    const profile = data as AdminProfile;
+
+    if (!profile.is_active) {
+        return {
+            state: 'inactive',
+            role: null,
+            title: 'Seu perfil está desativado',
+            message: `O perfil ${profile.role} de ${profile.email} existe, porém está com is_active = false. Perfis criados por auto-cadastro nascem desativados de propósito: ninguém acessa o módulo sem liberação explícita.`,
+            remediation: `update public.admin_profiles
+   set is_active = true, accepted_at = now()
+ where user_id = '${userId}';`,
+        };
+    }
+
+    return {
+        state: 'active',
+        role: profile.role,
+        title: 'Acesso liberado',
+        message: `Perfil ${profile.role} ativo desde ${new Date(profile.created_at).toLocaleDateString('pt-BR')}.`,
+    };
 }
 
 async function invokeAdminUsers<T>(body: Record<string, unknown>): Promise<T> {

@@ -19,6 +19,42 @@ export const ADMIN_ROLE_LABELS: Record<AdminRole, string> = {
 /** Roles allowed to create/change content, mirrored by RLS and the Edge Functions. */
 export const WRITE_ROLES: AdminRole[] = ['master_admin', 'admin', 'editor'];
 
+/**
+ * Why the newsletter module is (or is not) available to the current visitor.
+ *
+ * The module has four independent preconditions — a configured client, a
+ * Supabase session, a row in public.admin_profiles and is_active = true — and
+ * each failure needs a different fix from a different person (developer,
+ * operator, administrator). Collapsing them into a single message sends people
+ * after the wrong problem, so the state is tracked explicitly.
+ *
+ *   unconfigured → VITE_SUPABASE_URL / VITE_SUPABASE_ANON_KEY missing
+ *   no_session   → client works, but there is no auth.uid() to authorise
+ *   no_profile   → the account exists, yet the module has never seen it
+ *   inactive     → the profile exists and was deliberately switched off
+ *   query_failed → the database/API could not answer (RLS, network, schema)
+ *   active       → usable; `role` carries the authorisation level
+ */
+export type NewsletterAccessState =
+    | 'unconfigured'
+    | 'no_session'
+    | 'no_profile'
+    | 'inactive'
+    | 'query_failed'
+    | 'active';
+
+export interface NewsletterAccess {
+    state: NewsletterAccessState;
+    /** Authorisation level, present only when state is 'active'. */
+    role: AdminRole | null;
+    /** Short headline describing the exact failure. */
+    title: string;
+    /** Operator-facing explanation of what is missing. */
+    message: string;
+    /** Optional SQL/steps that unblock the situation. */
+    remediation?: string;
+}
+
 export type SubscriberStatus =
     | 'pending'
     | 'active'

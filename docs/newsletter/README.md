@@ -310,3 +310,54 @@ Registradas com honestidade, não como pendências ocultas:
 4. Limitar frequência por inscrito (frequency capping).
 5. Code-splitting do painel (`import()` do `NewsletterAdminPanel`) para reduzir o
    bundle principal, hoje com 528 kB.
+
+---
+
+## 11. Diagnóstico: "Sua conta não possui acesso ao módulo de newsletter"
+
+O painel só abre quando **quatro pré-condições independentes** estão satisfeitas.
+Cada uma tem um dono e uma correção diferente, então o painel informa *qual*
+falhou em vez de repetir a mesma frase:
+
+| Estado (`NewsletterAccessState`) | Causa | Correção |
+| --- | --- | --- |
+| `unconfigured` | `VITE_SUPABASE_URL` / `VITE_SUPABASE_ANON_KEY` ausentes na build. Sem cliente, não há banco para consultar e **todo** acesso é negado. | Copie `.env.example` para `.env` em desenvolvimento; no ambiente publicado, defina as variáveis de ambiente e refaça a build. |
+| `no_session` | O cliente existe, mas não há sessão Supabase — o login local (sandbox, `localStorage`) não cria `auth.uid()`. | Entre novamente com uma conta de `Authentication › Users`. |
+| `no_profile` | Há sessão, porém `public.admin_profiles` não tem linha para o usuário. | Rode `supabase/scripts/bootstrap_first_admin.sql` (ou promova pelo SQL da seção 6.2). |
+| `inactive` | O perfil existe com `is_active = false` — auto-cadastro nasce desativado de propósito. | `update public.admin_profiles set is_active = true where user_id = '...';` |
+| `query_failed` | O PostgREST/banco não respondeu (rede, schema, RLS). | A mensagem do erro original é exibida; verifique logs do banco. |
+| `active` | Tudo certo. | `role` define as abas visíveis. |
+
+### 11.1 Liberar o primeiro administrador (ovo-e-galinha)
+
+`public.admin_profiles` não tem política de escrita — ninguém escala o próprio
+perfil pelo Data API, e `admin-users` exige um `master_admin` para ser chamada.
+O primeiro administrador, portanto, só pode nascer fora do cliente:
+
+```bash
+supabase db query --local -f supabase/scripts/bootstrap_first_admin.sql
+# ou cole o arquivo no SQL Editor do projeto remoto
+```
+
+O script é idempotente, cria a conta em `auth.users` + `auth.identities` (com a
+senha informada e `raw_app_meta_data.newsletter_role = 'master_admin'`, valor que
+o trigger `private.handle_new_auth_user` lê) e garante `is_active = true`.
+
+> As colunas `confirmation_token`, `recovery_token`, `email_change` e
+> `email_change_token_new` precisam ser `''` e não `NULL`: o GoTrue responde
+> **500** no login por senha quando lê `NULL` nessas colunas.
+
+### 11.2 Verificação ponta a ponta
+
+Depois do bootstrap, o caminho exato do front-end pode ser conferido sem abrir o
+navegador — login por senha + leitura do próprio perfil sob RLS:
+
+```bash
+curl -s -X POST "http://127.0.0.1:54321/auth/v1/token?grant_type=password" \
+  -H "apikey: $ANON_KEY" -H "Content-Type: application/json" \
+  -d '{"email":"admin@veritaslex.adv.br","password":"..."}'
+
+curl -s "http://127.0.0.1:54321/rest/v1/admin_profiles?select=user_id,email,role,is_active" \
+  -H "apikey: $ANON_KEY" -H "Authorization: Bearer $ACCESS_TOKEN"
+# esperado: 200 com uma linha role=master_admin, is_active=true
+```
