@@ -13,6 +13,10 @@ import { PartnerScheduleModal } from './components/PartnerScheduleModal';
 import { ArticleModal } from './components/ArticleModal';
 import { CmsAdminDrawer } from './components/CmsAdminDrawer';
 import { SupabaseAuthModal } from './components/SupabaseAuthModal';
+import { NewsletterAdminPanel } from './components/admin/newsletter/NewsletterAdminPanel';
+import { Mail } from 'lucide-react';
+import { currentAdminProfile, logActivity } from './lib/newsletter/config';
+import type { AdminRole } from './types/newsletter';
 
 import {
   initialFirmConfig,
@@ -59,6 +63,12 @@ export default function App() {
 
   // Modals & Drawers
   const [isCmsOpen, setIsCmsOpen] = useState<boolean>(false);
+
+  // Newsletter back office. The role is resolved from public.admin_profiles on
+  // open rather than from the session, because authorization lives in the
+  // database and must be re-read rather than trusted from client state.
+  const [isNewsletterOpen, setIsNewsletterOpen] = useState<boolean>(false);
+  const [newsletterRole, setNewsletterRole] = useState<AdminRole | null>(null);
   const [isFeeModalOpen, setIsFeeModalOpen] = useState<boolean>(false);
   const [selectedPartner, setSelectedPartner] = useState<PartnerDossier | null>(null);
   const [selectedArticle, setSelectedArticle] = useState<LawReviewArticle | null>(null);
@@ -114,6 +124,24 @@ export default function App() {
     await supabaseSignOut();
     setCurrentUser(null);
     setIsCmsOpen(false);
+    setIsNewsletterOpen(false);
+    setNewsletterRole(null);
+  };
+
+  const handleOpenNewsletter = async () => {
+    setIsNewsletterOpen(true);
+
+    try {
+      const profile = await currentAdminProfile();
+      setNewsletterRole(profile?.is_active ? profile.role : null);
+
+      if (!profile?.is_active) {
+        console.warn('Conta sem acesso administrativo ativo no módulo de newsletter.');
+      }
+    } catch (error) {
+      console.warn('Não foi possível verificar o perfil de newsletter:', error);
+      setNewsletterRole(null);
+    }
   };
 
   const scrollToAudience = () => {
@@ -279,6 +307,30 @@ export default function App() {
         onAddArticle={handleAddArticle}
         currentUser={currentUser}
         onLogout={handleLogout}
+      />
+
+      {/* Newsletter back office entry point.
+          Rendered as an independent overlay so the module can evolve without
+          coupling to the existing CMS drawer. */}
+      {currentUser ? (
+        <button
+          type="button"
+          onClick={handleOpenNewsletter}
+          className="fixed bottom-5 right-5 z-40 inline-flex items-center gap-2 rounded-full border border-[var(--theme-gold)] bg-[var(--theme-card)] px-4 py-2.5 text-sm font-medium text-[var(--theme-gold)] shadow-lg transition-transform hover:scale-105 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--theme-gold)]"
+          aria-label="Abrir painel do informativo"
+        >
+          <Mail className="h-4 w-4" aria-hidden="true" />
+          Informativo
+        </button>
+      ) : null}
+
+      <NewsletterAdminPanel
+        isOpen={isNewsletterOpen}
+        onClose={() => {
+          void logActivity('newsletter_panel_close', 'Painel do informativo fechado');
+          setIsNewsletterOpen(false);
+        }}
+        role={newsletterRole}
       />
     </div>
   );

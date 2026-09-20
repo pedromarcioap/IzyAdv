@@ -1,0 +1,37 @@
+{
+    "$comment": "Config for the Deno runtime that executes Supabase Edge Functions. These files are intentionally excluded from the Vite/browser tsconfig (see tsconfig.json) because they run with Deno globals, npm: specifiers and the Supabase Edge runtime.",
+    "lock": false,
+    "compilerOptions": {
+        "lib": [
+            "deno.window",
+            "dom",
+            "dom.iterable"
+        ],
+        "strict": true,
+        "noImplicitOverride": true
+    },
+    "fmt": {
+        "lineWidth": 110,
+        "singleQuote": true,
+        "semiColons": true
+    },
+    "lint": {
+        "rules": {
+            "tags": [
+                "recommended"
+            ],
+            "exclude": [
+                "no-explicit-any"
+            ]
+        }
+    },
+    "test": {
+        "include": [
+            "**/*_test.ts"
+        ]
+    },
+    "tasks": {
+        "check": "deno check --config deno.json **/index.ts",
+        "test": "deno test --config deno.json --allow-env --allow-net"
+    }
+}
