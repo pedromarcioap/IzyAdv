@@ -2,6 +2,7 @@ import React from 'react';
 import { Landmark, Shield, ChevronDown, Lock, Scale } from 'lucide-react';
 import { FirmConfig } from '../types';
 import { BRAND_ASSETS } from '../data/initialData';
+import { Tooltip, HelpTooltip } from './Tooltip';
 
 interface HeroSectionProps {
   firmConfig: FirmConfig;
@@ -35,6 +36,11 @@ export const HeroSection: React.FC<HeroSectionProps> = ({ firmConfig }) => {
               <span className="font-data-mono text-[11px] uppercase tracking-widest text-[var(--theme-text-main)]">
                 Soberania Forense & Defesa Corporativa Implacável
               </span>
+              <HelpTooltip
+                title="Atuação em Cortes Superiores & Arbitragem"
+                badge="ESPECIALIZAÇÃO"
+                content="Representação exclusiva em litígios societários e tributários perante STF, STJ e Câmaras Internacionais de Arbitragem (ICC Paris e CAM-CCBC)."
+              />
             </div>
 
             <h1 className="font-display-hero text-4xl sm:text-6xl xl:text-7xl font-bold leading-[1.1] tracking-tight text-[var(--theme-text-main)] mb-6">
@@ -53,39 +59,77 @@ export const HeroSection: React.FC<HeroSectionProps> = ({ firmConfig }) => {
 
             {/* Dual Luxury CTAs */}
             <div className="flex flex-wrap items-center gap-5 w-full sm:w-auto">
-              <a
-                href="#audiencia"
-                style={{ background: 'var(--theme-button-gradient)' }}
-                className="px-8 py-4 rounded border border-[var(--theme-gold)]/60 text-[var(--theme-text-main)] font-medium text-sm tracking-widest uppercase flex items-center justify-center gap-3 shadow-[0_0_25px_rgba(212,175,55,0.25)] hover:shadow-[0_0_40px_rgba(212,175,55,0.45)] hover:border-[var(--theme-gold)] transition-all duration-300 cursor-pointer"
+              <Tooltip
+                title="Solicitação de Audiência Reservada"
+                position="top"
+                badge="AGENDAMENTO DIRETO"
+                content="Abre o protocolo confidencial de entrada para agendamento direto com o gabinete de sócios titulares, com triagem garantida em até 4 horas úteis."
               >
-                <Shield className="w-5 h-5 text-[var(--theme-gold)]" />
-                <span>Solicitar Audiência Reservada</span>
-              </a>
-              <a
-                href="#socios-dossier"
-                className="px-8 py-4 rounded bg-[var(--theme-card)]/80 hover:bg-[var(--theme-surface)]/80 border border-[var(--theme-border)] text-[var(--theme-text-main)] hover:text-[var(--theme-gold)] font-data-mono text-xs uppercase tracking-widest flex items-center justify-center gap-2 transition-all backdrop-blur-md cursor-pointer"
+                <a
+                  href="#audiencia"
+                  style={{ background: 'var(--theme-button-gradient)' }}
+                  className="px-8 py-4 rounded border border-[var(--theme-gold)]/60 text-[var(--theme-text-main)] font-medium text-sm tracking-widest uppercase flex items-center justify-center gap-3 shadow-[0_0_25px_rgba(212,175,55,0.25)] hover:shadow-[0_0_40px_rgba(212,175,55,0.45)] hover:border-[var(--theme-gold)] transition-all duration-300 cursor-pointer"
+                >
+                  <Shield className="w-5 h-5 text-[var(--theme-gold)]" />
+                  <span>Solicitar Audiência Reservada</span>
+                </a>
+              </Tooltip>
+
+              <Tooltip
+                title="Exame do Quadro de Sócios"
+                position="top"
+                badge="CORPO DOCENTE & TITULARES"
+                content="Navegue até a seção dos sócios seniores para verificar qualificações acadêmicas, titulações, registros OAB e histórico de despachos."
               >
-                <span>Examinar Banca de Sócios</span>
-                <ChevronDown className="w-4 h-4" />
-              </a>
+                <a
+                  href="#socios-dossier"
+                  className="px-8 py-4 rounded bg-[var(--theme-card)]/80 hover:bg-[var(--theme-surface)]/80 border border-[var(--theme-border)] text-[var(--theme-text-main)] hover:text-[var(--theme-gold)] font-data-mono text-xs uppercase tracking-widest flex items-center justify-center gap-2 transition-all backdrop-blur-md cursor-pointer"
+                >
+                  <span>Examinar Banca de Sócios</span>
+                  <ChevronDown className="w-4 h-4" />
+                </a>
+              </Tooltip>
             </div>
 
             {/* Oath and Seal Strip */}
             <div className="mt-12 pt-6 border-t border-[var(--theme-border)]/70 flex flex-wrap items-center gap-y-3 gap-x-8 font-data-mono text-[11px] text-[var(--theme-text-muted)] uppercase tracking-wider">
-              <span className="flex items-center gap-2">
-                <Lock className="w-3.5 h-3.5 text-[var(--theme-gold-antique)]" />
-                Sigilo Absoluto • Provimento OAB 205/2021
-              </span>
+              <Tooltip
+                title="Garantia Ética de Sigilo"
+                position="top"
+                badge="ESTATUTO DA OAB"
+                content="Proteção integral de sigilo profissional estabelecida pelo Regulamento Geral da Ordem dos Advogados do Brasil."
+              >
+                <span className="flex items-center gap-2 cursor-help">
+                  <Lock className="w-3.5 h-3.5 text-[var(--theme-gold-antique)]" />
+                  Sigilo Absoluto • Provimento OAB 205/2021
+                </span>
+              </Tooltip>
               <span className="text-[var(--theme-border)] hidden md:inline">|</span>
-              <span className="flex items-center gap-2">
-                <Shield className="w-3.5 h-3.5 text-[var(--theme-gold-antique)]" />
-                Prevenção Anti-Conflito Automatizada
-              </span>
+
+              <Tooltip
+                title="Checagem Sistêmica Anti-Conflito"
+                position="top"
+                badge="AUDITORIA PRÉVIA"
+                content="Verificação automatizada antes de cada atendimento para garantir a inexistência de conflito de interesses com clientes correntes da banca."
+              >
+                <span className="flex items-center gap-2 cursor-help">
+                  <Shield className="w-3.5 h-3.5 text-[var(--theme-gold-antique)]" />
+                  Prevenção Anti-Conflito Automatizada
+                </span>
+              </Tooltip>
               <span className="text-[var(--theme-border)] hidden md:inline">|</span>
-              <span className="flex items-center gap-2">
-                <Scale className="w-3.5 h-3.5 text-[var(--theme-gold-antique)]" />
-                Sustentação Oral Privada nos Tribunais
-              </span>
+
+              <Tooltip
+                title="Defesa Oral perante Ministros"
+                position="top"
+                badge="TRIBUNAIS SUPERIORES"
+                content="Sustentações presenciais e memoriais entregues em mãos aos ministros relatores e desembargadores em Brasília e São Paulo."
+              >
+                <span className="flex items-center gap-2 cursor-help">
+                  <Scale className="w-3.5 h-3.5 text-[var(--theme-gold-antique)]" />
+                  Sustentação Oral Privada nos Tribunais
+                </span>
+              </Tooltip>
             </div>
           </div>
 
@@ -106,39 +150,61 @@ export const HeroSection: React.FC<HeroSectionProps> = ({ firmConfig }) => {
 
               {/* Live Chamber Metric */}
               <div className="py-6 flex flex-col gap-5">
-                <div className="bg-[var(--theme-bg)]/60 p-4 rounded-lg border border-[var(--theme-border)]">
-                  <span className="text-[10px] font-data-mono uppercase tracking-widest text-[var(--theme-text-muted)] block mb-1">
-                    Litígios Ativos Conduzidos
-                  </span>
-                  <div className="font-display-hero text-4xl text-[var(--theme-gold)] font-bold">
-                    {firmConfig.activeLitigationValue}
+                <Tooltip
+                  title="Valor Total sob Gestão Forense"
+                  position="left"
+                  badge="ATALHO EXPLICATIVO"
+                  content="Montante acumulado de contingências fiscais, ações anulatórias e litígios societários patrocinados pela banca."
+                >
+                  <div className="bg-[var(--theme-bg)]/60 p-4 rounded-lg border border-[var(--theme-border)] cursor-help">
+                    <span className="text-[10px] font-data-mono uppercase tracking-widest text-[var(--theme-text-muted)] block mb-1">
+                      Litígios Ativos Conduzidos
+                    </span>
+                    <div className="font-display-hero text-4xl text-[var(--theme-gold)] font-bold">
+                      {firmConfig.activeLitigationValue}
+                    </div>
+                    <span className="text-xs text-[var(--theme-text-main)]/80 mt-1 block">
+                      Proteção e repatriação patrimonial em arbitragem e contencioso.
+                    </span>
                   </div>
-                  <span className="text-xs text-[var(--theme-text-main)]/80 mt-1 block">
-                    Proteção e repatriação patrimonial em arbitragem e contencioso.
-                  </span>
-                </div>
+                </Tooltip>
 
                 <div className="grid grid-cols-2 gap-3">
-                  <div className="bg-[var(--theme-bg)]/60 p-3.5 rounded border border-[var(--theme-border)]">
-                    <span className="text-[10px] font-data-mono text-[var(--theme-text-muted)] block">
-                      Êxito STF / STJ
-                    </span>
-                    <span className="font-display-hero text-2xl font-bold text-[var(--theme-text-main)] mt-0.5 block">
-                      {firmConfig.successRate}
-                    </span>
-                    <span className="text-[10px] text-[var(--theme-gold-antique)]">
-                      Admissibilidade Plena
-                    </span>
-                  </div>
-                  <div className="bg-[var(--theme-bg)]/60 p-3.5 rounded border border-[var(--theme-border)]">
-                    <span className="text-[10px] font-data-mono text-[var(--theme-text-muted)] block">
-                      Tradição Ininterrupta
-                    </span>
-                    <span className="font-display-hero text-2xl font-bold text-[var(--theme-text-main)] mt-0.5 block">
-                      {firmConfig.activeYears}
-                    </span>
-                    <span className="text-[10px] text-[var(--theme-gold-antique)]">Desde 1997</span>
-                  </div>
+                  <Tooltip
+                    title="Índice de Admissibilidade em Recursos"
+                    position="top"
+                    badge="MÉTRICA AUDITADA"
+                    content="Percentual de provimento e conhecimento de Recursos Especiais e Extraordinários perante o STJ e STF."
+                  >
+                    <div className="bg-[var(--theme-bg)]/60 p-3.5 rounded border border-[var(--theme-border)] cursor-help">
+                      <span className="text-[10px] font-data-mono text-[var(--theme-text-muted)] block">
+                        Êxito STF / STJ
+                      </span>
+                      <span className="font-display-hero text-2xl font-bold text-[var(--theme-text-main)] mt-0.5 block">
+                        {firmConfig.successRate}
+                      </span>
+                      <span className="text-[10px] text-[var(--theme-gold-antique)]">
+                        Admissibilidade Plena
+                      </span>
+                    </div>
+                  </Tooltip>
+
+                  <Tooltip
+                    title="Histórico Institucional Ininterrupto"
+                    position="top"
+                    badge="TRADIÇÃO"
+                    content="Tempo de atuação continuada com acervo jurisprudencial e jurisprudência consolidada desde 1997."
+                  >
+                    <div className="bg-[var(--theme-bg)]/60 p-3.5 rounded border border-[var(--theme-border)] cursor-help">
+                      <span className="text-[10px] font-data-mono text-[var(--theme-text-muted)] block">
+                        Tradição Ininterrupta
+                      </span>
+                      <span className="font-display-hero text-2xl font-bold text-[var(--theme-text-main)] mt-0.5 block">
+                        {firmConfig.activeYears}
+                      </span>
+                      <span className="text-[10px] text-[var(--theme-gold-antique)]">Desde 1997</span>
+                    </div>
+                  </Tooltip>
                 </div>
               </div>
 
@@ -160,3 +226,4 @@ export const HeroSection: React.FC<HeroSectionProps> = ({ firmConfig }) => {
     </section>
   );
 };
+

@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Lock, ShieldCheck, Clock, Send, CheckCircle2 } from 'lucide-react';
 import { FirmConfig, IntakeProtocol } from '../types';
+import { Tooltip, HelpTooltip } from './Tooltip';
 
 interface ConfidentialIntakeProps {
   firmConfig: FirmConfig;
@@ -65,6 +66,11 @@ export const ConfidentialIntake: React.FC<ConfidentialIntakeProps> = ({
             <div>
               <span className="font-data-mono text-xs uppercase tracking-[0.2em] text-[var(--theme-gold)] flex items-center gap-2 mb-3">
                 <span className="w-6 h-px bg-[var(--theme-gold)]"></span> Protocolo Restrito
+                <HelpTooltip
+                  title="Protocolo Reservado de Entrada"
+                  badge="ATENDIMENTO DE CRISE"
+                  content="Canal exclusivo para executivos, fundos de investimento e conselhos de administração que necessitem de atuação imediata ou sigilosa."
+                />
               </span>
               <h2 className="font-display-hero text-3xl md:text-5xl font-bold text-[var(--theme-text-main)] mb-6">
                 Solicitar Audiência Privada
@@ -75,41 +81,62 @@ export const ConfidentialIntake: React.FC<ConfidentialIntakeProps> = ({
 
               {/* Secrecy Guarantee Card */}
               <div className="bg-[var(--theme-card)] p-6 rounded-xl border border-[var(--theme-border)] flex flex-col gap-4 mb-8">
-                <div className="flex items-start gap-3">
-                  <Lock className="w-5 h-5 text-[var(--theme-gold)] mt-0.5 shrink-0" />
-                  <div>
-                    <h4 className="text-xs font-semibold text-[var(--theme-text-main)] uppercase tracking-wide">
-                      Acordo de Não-Divulgação Automático
-                    </h4>
-                    <p className="text-[11px] text-[var(--theme-text-muted)] mt-0.5">
-                      Sob a proteção de sigilo estrito da Lei Federal 8.906/94 (Estatuto da OAB).
-                    </p>
+                <Tooltip
+                  title="Proteção sob Estatuto da OAB"
+                  position="right"
+                  badge="LEI 8.906/94"
+                  content="Todas as informações compartilhadas neste formulário estão protegidas pelo sigilo profissional de advogado, invioláveis por determinação legal."
+                >
+                  <div className="flex items-start gap-3 cursor-help">
+                    <Lock className="w-5 h-5 text-[var(--theme-gold)] mt-0.5 shrink-0" />
+                    <div>
+                      <h4 className="text-xs font-semibold text-[var(--theme-text-main)] uppercase tracking-wide">
+                        Acordo de Não-Divulgação Automático
+                      </h4>
+                      <p className="text-[11px] text-[var(--theme-text-muted)] mt-0.5">
+                        Sob a proteção de sigilo estrito da Lei Federal 8.906/94 (Estatuto da OAB).
+                      </p>
+                    </div>
                   </div>
-                </div>
+                </Tooltip>
 
-                <div className="flex items-start gap-3">
-                  <ShieldCheck className="w-5 h-5 text-[var(--theme-gold)] mt-0.5 shrink-0" />
-                  <div>
-                    <h4 className="text-xs font-semibold text-[var(--theme-text-main)] uppercase tracking-wide">
-                      Conformidade LGPD Soberana
-                    </h4>
-                    <p className="text-[11px] text-[var(--theme-text-muted)] mt-0.5">
-                      Servidores com custódia local de chaves assimétricas e exclusão programada de vestígios.
-                    </p>
+                <Tooltip
+                  title="Chaves Criptográficas de 4096 Bits"
+                  position="right"
+                  badge="SEGURAÇA LGPD"
+                  content="Os dados do formulário são encriptados na origem e salvos no banco Supabase com políticas RLS restritas ao gabinete de sócios."
+                >
+                  <div className="flex items-start gap-3 cursor-help">
+                    <ShieldCheck className="w-5 h-5 text-[var(--theme-gold)] mt-0.5 shrink-0" />
+                    <div>
+                      <h4 className="text-xs font-semibold text-[var(--theme-text-main)] uppercase tracking-wide">
+                        Conformidade LGPD Soberana
+                      </h4>
+                      <p className="text-[11px] text-[var(--theme-text-muted)] mt-0.5">
+                        Servidores com custódia local de chaves assimétricas e exclusão programada de vestígios.
+                      </p>
+                    </div>
                   </div>
-                </div>
+                </Tooltip>
 
-                <div className="flex items-start gap-3">
-                  <Clock className="w-5 h-5 text-[var(--theme-gold)] mt-0.5 shrink-0" />
-                  <div>
-                    <h4 className="text-xs font-semibold text-[var(--theme-text-main)] uppercase tracking-wide">
-                      Triagem em até 4 Horas Úteis
-                    </h4>
-                    <p className="text-[11px] text-[var(--theme-text-muted)] mt-0.5">
-                      Retorno prioritário diretamente por um dos sócios diretores.
-                    </p>
+                <Tooltip
+                  title="Prazo Máximo de Resposta"
+                  position="right"
+                  badge="SLAGABINETE"
+                  content="Em casos urgentes, um sócio titular realiza a triagem direta do conflito e entra em contato via telefone ou videoconferência criptografada."
+                >
+                  <div className="flex items-start gap-3 cursor-help">
+                    <Clock className="w-5 h-5 text-[var(--theme-gold)] mt-0.5 shrink-0" />
+                    <div>
+                      <h4 className="text-xs font-semibold text-[var(--theme-text-main)] uppercase tracking-wide">
+                        Triagem em até 4 Horas Úteis
+                      </h4>
+                      <p className="text-[11px] text-[var(--theme-text-muted)] mt-0.5">
+                        Retorno prioritário diretamente por um dos sócios diretores.
+                      </p>
+                    </div>
                   </div>
-                </div>
+                </Tooltip>
               </div>
             </div>
 
@@ -138,9 +165,16 @@ export const ConfidentialIntake: React.FC<ConfidentialIntakeProps> = ({
                   CONFIDENTIAL CLIENT INTAKE PROTOCOL
                 </span>
               </div>
-              <span className="text-xs font-data-mono text-[var(--theme-gold)] bg-[var(--theme-gold)]/10 px-2.5 py-1 rounded border border-[var(--theme-gold)]/20">
-                SSL 4096-BIT
-              </span>
+              <Tooltip
+                title="Criptografia SSL de Nível Militar"
+                position="top"
+                badge="SEGURANÇA DE DADOS"
+                content="Todos os pacotes trafegados neste formulário utilizam criptografia de ponta a ponta TLS 1.3 com chaves RSA de 4096 bits."
+              >
+                <span className="text-xs font-data-mono text-[var(--theme-gold)] bg-[var(--theme-gold)]/10 px-2.5 py-1 rounded border border-[var(--theme-gold)]/20 cursor-help">
+                  SSL 4096-BIT
+                </span>
+              </Tooltip>
             </div>
 
             <form onSubmit={handleSubmit} className="space-y-5">
@@ -269,15 +303,22 @@ export const ConfidentialIntake: React.FC<ConfidentialIntakeProps> = ({
                 <span className="text-[11px] font-data-mono text-[var(--theme-text-muted)]">
                   AUDITADO OAB/SP & LGPD
                 </span>
-                <button
-                  type="submit"
-                  disabled={isSubmitting}
-                  style={{ background: 'var(--theme-button-gradient)' }}
-                  className="w-full sm:w-auto px-8 py-3.5 rounded border border-[var(--theme-gold)]/50 text-[var(--theme-text-main)] font-bold text-xs uppercase tracking-widest hover:brightness-110 shadow-[0_0_20px_rgba(212,175,55,0.3)] transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
+                <Tooltip
+                  title="Envio de Protocolo Confidencial"
+                  position="top"
+                  badge="TRANSMISSÃO SEGURA"
+                  content="Gera um número de protocolo único e notifica o gabinete de sócios para triagem prévia em até 4h."
                 >
-                  <span>{isSubmitting ? 'Transmitindo...' : 'Transmitir Protocolo Seguro'}</span>
-                  <Send className="w-4 h-4" />
-                </button>
+                  <button
+                    type="submit"
+                    disabled={isSubmitting}
+                    style={{ background: 'var(--theme-button-gradient)' }}
+                    className="w-full sm:w-auto px-8 py-3.5 rounded border border-[var(--theme-gold)]/50 text-[var(--theme-text-main)] font-bold text-xs uppercase tracking-widest hover:brightness-110 shadow-[0_0_20px_rgba(212,175,55,0.3)] transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
+                  >
+                    <span>{isSubmitting ? 'Transmitindo...' : 'Transmitir Protocolo Seguro'}</span>
+                    <Send className="w-4 h-4" />
+                  </button>
+                </Tooltip>
               </div>
             </form>
 
@@ -296,3 +337,4 @@ export const ConfidentialIntake: React.FC<ConfidentialIntakeProps> = ({
     </section>
   );
 };
+

@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { ArrowUpRight, BookOpen, Mail, CheckCircle2, ShieldCheck, ArrowRight } from 'lucide-react';
 import { LawReviewArticle } from '../types';
 import { dbInsertSubscriber } from '../lib/supabase';
+import { Tooltip, HelpTooltip } from './Tooltip';
 
 interface LawReviewProps {
   articles: LawReviewArticle[];
@@ -43,6 +44,11 @@ export const LawReview: React.FC<LawReviewProps> = ({
           <div>
             <span className="font-data-mono text-xs uppercase tracking-[0.2em] text-[var(--theme-gold)] flex items-center gap-2">
               <span className="w-6 h-px bg-[var(--theme-gold)]"></span> Doutrina Publicada • Law Review
+              <HelpTooltip
+                title="Produção Científica & Teses"
+                badge="LAW REVIEW"
+                content="Publicações acadêmicas e pareceres formulados pelos sócios da banca, abordando precedentes vinculantes do STF, STJ e Câmaras Internacionais de Arbitragem."
+              />
             </span>
             <h2 className="font-display-hero text-3xl md:text-5xl font-bold text-[var(--theme-text-main)] mt-2">
               Teses & Análise Dogmática
@@ -51,85 +57,123 @@ export const LawReview: React.FC<LawReviewProps> = ({
 
           {/* Tab Filter Buttons */}
           <div className="flex flex-wrap items-center gap-2 bg-[var(--theme-surface)] p-1 rounded-lg border border-[var(--theme-border)]">
-            <button
-              type="button"
-              onClick={() => setActiveFilter('todas')}
-              className={`px-3.5 py-1.5 rounded text-xs font-data-mono uppercase tracking-wider transition-all cursor-pointer ${
-                activeFilter === 'todas'
-                  ? 'bg-[var(--theme-gold)] text-[var(--theme-bg)] font-bold shadow-sm'
-                  : 'text-[var(--theme-text-muted)] hover:text-[var(--theme-text-main)]'
-              }`}
+            <Tooltip
+              title="Filtrar por Todas as Teses"
+              position="top"
+              badge="ACERVO COMPLETO"
+              content="Exibe a totalidade dos pareceres e artigos publicados pela banca."
             >
-              Todas as Teses
-            </button>
-            <button
-              type="button"
-              onClick={() => setActiveFilter('tributario')}
-              className={`px-3.5 py-1.5 rounded text-xs font-data-mono uppercase tracking-wider transition-all cursor-pointer ${
-                activeFilter === 'tributario'
-                  ? 'bg-[var(--theme-gold)] text-[var(--theme-bg)] font-bold shadow-sm'
-                  : 'text-[var(--theme-text-muted)] hover:text-[var(--theme-text-main)]'
-              }`}
+              <button
+                type="button"
+                onClick={() => setActiveFilter('todas')}
+                className={`px-3.5 py-1.5 rounded text-xs font-data-mono uppercase tracking-wider transition-all cursor-pointer ${
+                  activeFilter === 'todas'
+                    ? 'bg-[var(--theme-gold)] text-[var(--theme-bg)] font-bold shadow-sm'
+                    : 'text-[var(--theme-text-muted)] hover:text-[var(--theme-text-main)]'
+                }`}
+              >
+                Todas as Teses
+              </button>
+            </Tooltip>
+
+            <Tooltip
+              title="Filtro: Contencioso Tributário"
+              position="top"
+              badge="TRIBUTÁRIO & CARF"
+              content="Teses sobre execução fiscal, recuperação de créditos e Teses do Século no STF."
             >
-              Tributário
-            </button>
-            <button
-              type="button"
-              onClick={() => setActiveFilter('stf')}
-              className={`px-3.5 py-1.5 rounded text-xs font-data-mono uppercase tracking-wider transition-all cursor-pointer ${
-                activeFilter === 'stf'
-                  ? 'bg-[var(--theme-gold)] text-[var(--theme-bg)] font-bold shadow-sm'
-                  : 'text-[var(--theme-text-muted)] hover:text-[var(--theme-text-main)]'
-              }`}
+              <button
+                type="button"
+                onClick={() => setActiveFilter('tributario')}
+                className={`px-3.5 py-1.5 rounded text-xs font-data-mono uppercase tracking-wider transition-all cursor-pointer ${
+                  activeFilter === 'tributario'
+                    ? 'bg-[var(--theme-gold)] text-[var(--theme-bg)] font-bold shadow-sm'
+                    : 'text-[var(--theme-text-muted)] hover:text-[var(--theme-text-main)]'
+                }`}
+              >
+                Tributário
+              </button>
+            </Tooltip>
+
+            <Tooltip
+              title="Filtro: Cortes Superiores"
+              position="top"
+              badge="STF / STJ"
+              content="Análise de repercussão geral, recursos repetitivos e precedentes vinculantes."
             >
-              STF / STJ
-            </button>
-            <button
-              type="button"
-              onClick={() => setActiveFilter('arbitragem')}
-              className={`px-3.5 py-1.5 rounded text-xs font-data-mono uppercase tracking-wider transition-all cursor-pointer ${
-                activeFilter === 'arbitragem'
-                  ? 'bg-[var(--theme-gold)] text-[var(--theme-bg)] font-bold shadow-sm'
-                  : 'text-[var(--theme-text-muted)] hover:text-[var(--theme-text-main)]'
-              }`}
+              <button
+                type="button"
+                onClick={() => setActiveFilter('stf')}
+                className={`px-3.5 py-1.5 rounded text-xs font-data-mono uppercase tracking-wider transition-all cursor-pointer ${
+                  activeFilter === 'stf'
+                    ? 'bg-[var(--theme-gold)] text-[var(--theme-bg)] font-bold shadow-sm'
+                    : 'text-[var(--theme-text-muted)] hover:text-[var(--theme-text-main)]'
+                }`}
+              >
+                STF / STJ
+              </button>
+            </Tooltip>
+
+            <Tooltip
+              title="Filtro: Arbitragem Internacional"
+              position="top"
+              badge="ICC & CAM-CCBC"
+              content="Estudos sobre procedimentos arbitrais complexos, cláusulas compromissórias e homologação de laudos estrangeiros."
             >
-              Arbitragem
-            </button>
+              <button
+                type="button"
+                onClick={() => setActiveFilter('arbitragem')}
+                className={`px-3.5 py-1.5 rounded text-xs font-data-mono uppercase tracking-wider transition-all cursor-pointer ${
+                  activeFilter === 'arbitragem'
+                    ? 'bg-[var(--theme-gold)] text-[var(--theme-bg)] font-bold shadow-sm'
+                    : 'text-[var(--theme-text-muted)] hover:text-[var(--theme-text-main)]'
+                }`}
+              >
+                Arbitragem
+              </button>
+            </Tooltip>
           </div>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
           {filteredArticles.map((article) => (
-            <article
+            <Tooltip
               key={article.id}
-              onClick={() => onSelectArticle(article)}
-              className="bg-[var(--theme-card)] p-8 rounded-xl border border-[var(--theme-border)] hover:border-[var(--theme-gold-antique)] transition-all flex flex-col justify-between group cursor-pointer shadow-lg"
+              title={`Ler Tese: ${article.title}`}
+              position="top"
+              badge={article.categoryLabel}
+              content="Clique para abrir a leitura completa do artigo com notas de rodapé, citações doutrinárias e precedentes associados."
             >
-              <div>
-                <div className="flex items-center justify-between text-[11px] font-data-mono text-[var(--theme-gold-antique)] mb-4">
-                  <span className="bg-[var(--theme-gold)]/10 text-[var(--theme-gold)] px-2 py-0.5 rounded border border-[var(--theme-gold)]/20">
-                    {article.categoryLabel}
-                  </span>
-                  <span>{article.readTime}</span>
+              <article
+                onClick={() => onSelectArticle(article)}
+                className="bg-[var(--theme-card)] p-8 rounded-xl border border-[var(--theme-border)] hover:border-[var(--theme-gold-antique)] transition-all flex flex-col justify-between group cursor-pointer shadow-lg h-full"
+              >
+                <div>
+                  <div className="flex items-center justify-between text-[11px] font-data-mono text-[var(--theme-gold-antique)] mb-4">
+                    <span className="bg-[var(--theme-gold)]/10 text-[var(--theme-gold)] px-2 py-0.5 rounded border border-[var(--theme-gold)]/20">
+                      {article.categoryLabel}
+                    </span>
+                    <span>{article.readTime}</span>
+                  </div>
+
+                  <h3 className="font-display-hero text-xl font-bold text-[var(--theme-text-main)] group-hover:text-[var(--theme-gold-antique)] transition-colors mb-3 leading-snug">
+                    {article.title}
+                  </h3>
+
+                  <p className="text-xs text-[var(--theme-text-main)]/90 leading-relaxed font-light mb-6">
+                    {article.abstract}
+                  </p>
                 </div>
 
-                <h3 className="font-display-hero text-xl font-bold text-[var(--theme-text-main)] group-hover:text-[var(--theme-gold-antique)] transition-colors mb-3 leading-snug">
-                  {article.title}
-                </h3>
-
-                <p className="text-xs text-[var(--theme-text-main)]/90 leading-relaxed font-light mb-6">
-                  {article.abstract}
-                </p>
-              </div>
-
-              <div className="pt-4 border-t border-[var(--theme-border)] flex items-center justify-between text-xs font-data-mono text-[var(--theme-text-muted)]">
-                <span className="flex items-center gap-1.5">
-                  <BookOpen className="w-3.5 h-3.5 text-[var(--theme-gold-antique)]" />
-                  {article.author}
-                </span>
-                <ArrowUpRight className="w-4 h-4 text-[var(--theme-gold)] group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-transform" />
-              </div>
-            </article>
+                <div className="pt-4 border-t border-[var(--theme-border)] flex items-center justify-between text-xs font-data-mono text-[var(--theme-text-muted)]">
+                  <span className="flex items-center gap-1.5">
+                    <BookOpen className="w-3.5 h-3.5 text-[var(--theme-gold-antique)]" />
+                    {article.author}
+                  </span>
+                  <ArrowUpRight className="w-4 h-4 text-[var(--theme-gold)] group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-transform" />
+                </div>
+              </article>
+            </Tooltip>
           ))}
         </div>
 
@@ -224,14 +268,21 @@ export const LawReview: React.FC<LawReviewProps> = ({
                       Em conformidade com a LGPD e o Código de Ética da OAB.
                     </span>
 
-                    <button
-                      type="submit"
-                      disabled={isSubmitting}
-                      className="w-full sm:w-auto px-6 py-2.5 rounded bg-gradient-to-r from-[var(--theme-gold)] to-[var(--theme-gold-antique)] text-[var(--theme-bg)] font-bold text-xs font-data-mono uppercase tracking-wider hover:brightness-110 shadow-[0_0_15px_rgba(212,175,55,0.25)] transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
+                    <Tooltip
+                      title="Confirmar Inscrição no Boletim"
+                      position="top"
+                      badge="INFORMATIVO DOCENTE"
+                      content="Inscreve seu e-mail para receber análises jurídicas exclusivas quinzenalmente. Dados salvos de forma segura no Supabase."
                     >
-                      <span>{isSubmitting ? 'Processando...' : 'Assinar Informativo'}</span>
-                      <ArrowRight className="w-3.5 h-3.5" />
-                    </button>
+                      <button
+                        type="submit"
+                        disabled={isSubmitting}
+                        className="w-full sm:w-auto px-6 py-2.5 rounded bg-gradient-to-r from-[var(--theme-gold)] to-[var(--theme-gold-antique)] text-[var(--theme-bg)] font-bold text-xs font-data-mono uppercase tracking-wider hover:brightness-110 shadow-[0_0_15px_rgba(212,175,55,0.25)] transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
+                      >
+                        <span>{isSubmitting ? 'Processando...' : 'Assinar Informativo'}</span>
+                        <ArrowRight className="w-3.5 h-3.5" />
+                      </button>
+                    </Tooltip>
                   </div>
                 </form>
               )}
@@ -242,4 +293,5 @@ export const LawReview: React.FC<LawReviewProps> = ({
     </section>
   );
 };
+
 

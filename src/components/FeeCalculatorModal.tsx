@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { Calculator, X, ArrowRight, ShieldAlert } from 'lucide-react';
+import { Tooltip, HelpTooltip } from './Tooltip';
 
 interface FeeCalculatorModalProps {
   isOpen: boolean;
@@ -72,6 +73,11 @@ export const FeeCalculatorModal: React.FC<FeeCalculatorModalProps> = ({
         <div className="flex items-center gap-2 text-[#D4AF37] font-data-mono text-xs mb-2">
           <Calculator className="w-4 h-4" />
           <span>ESTIMADOR DE COMPLEXIDADE & TABELA OAB</span>
+          <HelpTooltip
+            title="Sobre a Tabela e Parâmetros OAB"
+            badge="PARÂMETROS REGULAMENTARES"
+            content="Nossas propostas observam os limites éticos do Provimento 94/2000 da OAB, combinando pró-labores iniciais com cláusulas de quota-litis condicionadas ao êxito."
+          />
         </div>
 
         <h3 className="font-display-hero text-2xl font-bold text-[#FDF9F3] mb-2">
@@ -156,14 +162,21 @@ export const FeeCalculatorModal: React.FC<FeeCalculatorModalProps> = ({
           >
             Fechar
           </button>
-          <button
-            type="button"
-            onClick={handleApply}
-            className="px-5 py-2 rounded bg-[#D4AF37] text-[#0B0305] text-xs font-data-mono font-bold uppercase tracking-wider hover:brightness-110 flex items-center gap-2 cursor-pointer"
+          <Tooltip
+            title="Migrar para Agendamento"
+            position="top"
+            badge="AUTOMATIZAÇÃO DE INTAKE"
+            content="Preenche automaticamente os dados da estimativa no formulário de solicitação de audiência privada."
           >
-            <span>Agendar com Esta Proposta</span>
-            <ArrowRight className="w-3.5 h-3.5" />
-          </button>
+            <button
+              type="button"
+              onClick={handleApply}
+              className="px-5 py-2 rounded bg-[#D4AF37] text-[#0B0305] text-xs font-data-mono font-bold uppercase tracking-wider hover:brightness-110 flex items-center gap-2 cursor-pointer"
+            >
+              <span>Agendar com Esta Proposta</span>
+              <ArrowRight className="w-3.5 h-3.5" />
+            </button>
+          </Tooltip>
         </div>
       </div>
     </div>

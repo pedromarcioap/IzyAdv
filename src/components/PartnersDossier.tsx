@@ -1,6 +1,7 @@
 import React from 'react';
 import { ArrowUpRight } from 'lucide-react';
 import { PartnerDossier } from '../types';
+import { Tooltip, HelpTooltip } from './Tooltip';
 
 interface PartnersDossierProps {
   partners: PartnerDossier[];
@@ -20,6 +21,11 @@ export const PartnersDossier: React.FC<PartnersDossierProps> = ({
         <div className="max-w-3xl mb-16">
           <span className="font-data-mono text-xs uppercase tracking-[0.2em] text-[var(--theme-gold)] flex items-center gap-2">
             <span className="w-6 h-px bg-[var(--theme-gold)]"></span> Liderança Titular
+            <HelpTooltip
+              title="Registro e Qualificação dos Sócios"
+              badge="VERIFICAÇÃO OAB"
+              content="Todos os sócios possuem inscrição regular na Ordem dos Advogados do Brasil e titulação de Doutorado ou Mestrado pelas principais faculdades de Direito do país."
+            />
           </span>
           <h2 className="font-display-hero text-4xl md:text-5xl font-bold text-[var(--theme-text-main)] mt-2">
             Dossiê dos Sócios Seniores
@@ -54,7 +60,14 @@ export const PartnersDossier: React.FC<PartnersDossierProps> = ({
               <div className="md:w-7/12 p-8 flex flex-col justify-between">
                 <div>
                   <div className="flex items-center justify-between text-[11px] font-data-mono text-[var(--theme-gold-antique)] opacity-80 mb-2">
-                    <span>{partner.oab}</span>
+                    <Tooltip
+                      title="Registro Profissional na OAB"
+                      position="top"
+                      badge="CADASTRO NACIONAL"
+                      content="Inscrição profissional ativa no Conselho Seccional correspondente."
+                    >
+                      <span className="cursor-help">{partner.oab}</span>
+                    </Tooltip>
                     <span>{partner.chamber}</span>
                   </div>
 
@@ -90,18 +103,32 @@ export const PartnersDossier: React.FC<PartnersDossierProps> = ({
 
                 {/* Partner Action Foot */}
                 <div className="pt-4 border-t border-[var(--theme-border)] flex items-center justify-between">
-                  <span className="text-[11px] font-data-mono text-[var(--theme-text-muted)]">
-                    LATTES: {partner.lattesId}
-                  </span>
-
-                  <button
-                    type="button"
-                    onClick={() => onSelectPartnerForSchedule(partner)}
-                    className="text-xs font-data-mono text-[var(--theme-gold)] hover:text-[var(--theme-gold-antique)] flex items-center gap-1 cursor-pointer transition-colors"
+                  <Tooltip
+                    title="Currículo Lattes CNPq"
+                    position="top"
+                    badge="PRODUÇÃO ACADÊMICA"
+                    content="Identificador no Conselho Nacional de Desenvolvimento Científico e Tecnológico para checagem de publicações e tese de doutorado."
                   >
-                    <span>CONSULTAR AGENDA</span>
-                    <ArrowUpRight className="w-3.5 h-3.5" />
-                  </button>
+                    <span className="text-[11px] font-data-mono text-[var(--theme-text-muted)] cursor-help">
+                      LATTES: {partner.lattesId}
+                    </span>
+                  </Tooltip>
+
+                  <Tooltip
+                    title="Agendar Audiência Direta"
+                    position="top"
+                    badge="GABINETE DO SÓCIO"
+                    content="Abre a janela de agendamento reservado para reuniões presenciais ou teleconferência direta com o sócio titular."
+                  >
+                    <button
+                      type="button"
+                      onClick={() => onSelectPartnerForSchedule(partner)}
+                      className="text-xs font-data-mono text-[var(--theme-gold)] hover:text-[var(--theme-gold-antique)] flex items-center gap-1 cursor-pointer transition-colors"
+                    >
+                      <span>CONSULTAR AGENDA</span>
+                      <ArrowUpRight className="w-3.5 h-3.5" />
+                    </button>
+                  </Tooltip>
                 </div>
               </div>
             </div>
@@ -111,3 +138,4 @@ export const PartnersDossier: React.FC<PartnersDossierProps> = ({
     </section>
   );
 };
+
