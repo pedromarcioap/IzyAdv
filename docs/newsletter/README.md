@@ -361,3 +361,26 @@ curl -s "http://127.0.0.1:54321/rest/v1/admin_profiles?select=user_id,email,role
   -H "apikey: $ANON_KEY" -H "Authorization: Bearer $ACCESS_TOKEN"
 # esperado: 200 com uma linha role=master_admin, is_active=true
 ```
+
+Se a resposta for `401` com `permission denied for table ... TO anon`, o token não
+está sendo enviado: o PostgREST cai no papel `anon`. Confira se o header
+`Authorization: Bearer <access_token>` acompanha **todo** request (o `apikey`
+sozinho nunca autentica ninguém).
+
+### 11.3 Quando a Edge Function não está no ar
+
+`admin-users` é a única superfície privilegiada do módulo (usa a service role
+key), então nunca é substituível por acesso direto à tabela. Rodar Edge Function
+localmente exige Docker; sem ele, `POST /functions/v1/admin-users` responde
+**404** e o painel Configurações › Usuários entra em **modo somente leitura**:
+
+- o elenco de usuários continua visível, lido direto de `admin_profiles` sob RLS;
+- criar, promover, desativar, excluir e gerar link de recuperação ficam
+  desabilitados, com o aviso explicando o comando que falta
+  (`supabase functions serve admin-users`, ou `supabase functions deploy
+  admin-users` no projeto publicado).
+
+O 404 é classificado separadamente de um 401/403: "não publicada aqui" e "sem
+permissão" exigem ações diferentes, e tratá-los como iguais fazia o operador
+procurar um problema de perfil que não existia. Enquanto a função não estiver no
+ar, use `supabase/scripts/bootstrap_first_admin.sql` para criar/promover contas.

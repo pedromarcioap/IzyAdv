@@ -1258,6 +1258,9 @@ const AdminUsersPanel: React.FC<{ canAdmin: boolean; role: AdminRole | null }> =
     const [users, setUsers] = useState<AdminProfile[]>([]);
     const [loading, setLoading] = useState(true);
     const [busy, setBusy] = useState(false);
+    // Set when the Edge Function is unreachable (404 locally without Docker) and
+    // the roster was read directly from the table. Mutations stay impossible.
+    const [degraded, setDegraded] = useState<string | null>(null);
     const [email, setEmail] = useState('');
     const [fullName, setFullName] = useState('');
     const [newRole, setNewRole] = useState<AdminRole>('editor');
@@ -1267,8 +1270,9 @@ const AdminUsersPanel: React.FC<{ canAdmin: boolean; role: AdminRole | null }> =
     const load = useCallback(async () => {
         setLoading(true);
         try {
-            const { users: rows } = await listAdminUsers();
+            const { users: rows, degradedReason } = await listAdminUsers();
             setUsers(rows);
+            setDegraded(degradedReason ?? null);
         } catch (error) {
             toast.push(error instanceof Error ? error.message : 'falha ao listar usuários', 'error');
         } finally {
@@ -1294,6 +1298,15 @@ const AdminUsersPanel: React.FC<{ canAdmin: boolean; role: AdminRole | null }> =
 
     return (
         <Card title="Usuários administrativos" subtitle="Perfis controlam o que cada pessoa pode fazer no módulo.">
+            {degraded ? (
+                <div className="mb-4">
+                    <Alert tone="info">
+                        <p className="font-medium">Somente leitura neste ambiente</p>
+                        <p className="mt-1">{degraded}</p>
+                    </Alert>
+                </div>
+            ) : null}
+
             <div className="grid gap-3 sm:grid-cols-4">
                 <Field label="E-mail" required>
                     {(id) => <Input id={id} type="email" value={email} onChange={(event) => setEmail(event.target.value)} />}
@@ -1316,6 +1329,7 @@ const AdminUsersPanel: React.FC<{ canAdmin: boolean; role: AdminRole | null }> =
                     <Button
                         variant="primary"
                         loading={busy}
+                        disabled={degraded !== null}
                         icon={<Plus className="h-3.5 w-3.5" />}
                         onClick={async () => {
                             setBusy(true);
@@ -1385,7 +1399,7 @@ const AdminUsersPanel: React.FC<{ canAdmin: boolean; role: AdminRole | null }> =
                                         <Select
                                             aria-label={`Perfil de ${user.email}`}
                                             value={user.role}
-                                            disabled={busy || user.user_id === undefined}
+                                            disabled={busy || degraded !== null || user.user_id === undefined}
                                             onChange={async (event) => {
                                                 try {
                                                     await setAdminUserRole(user.user_id, event.target.value as AdminRole);
@@ -1411,6 +1425,7 @@ const AdminUsersPanel: React.FC<{ canAdmin: boolean; role: AdminRole | null }> =
                                             <Button
                                                 size="sm"
                                                 variant="ghost"
+                                                disabled={degraded !== null}
                                                 onClick={async () => {
                                                     try {
                                                         await setAdminUserActive(user.user_id, !user.is_active);
@@ -1426,6 +1441,7 @@ const AdminUsersPanel: React.FC<{ canAdmin: boolean; role: AdminRole | null }> =
                                             <Button
                                                 size="sm"
                                                 variant="ghost"
+                                                disabled={degraded !== null}
                                                 onClick={async () => {
                                                     try {
                                                         const result = await generateRecoveryLink(user.user_id);
@@ -1441,6 +1457,7 @@ const AdminUsersPanel: React.FC<{ canAdmin: boolean; role: AdminRole | null }> =
                                             <Button
                                                 size="sm"
                                                 variant="danger"
+                                                disabled={degraded !== null}
                                                 icon={<Trash2 className="h-3.5 w-3.5" />}
                                                 aria-label={`Excluir ${user.email}`}
                                                 onClick={() => setDeleteTarget(user)}

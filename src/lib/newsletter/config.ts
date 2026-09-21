@@ -19,7 +19,7 @@ import type {
     SegmentPreviewRow,
 } from '../../types/newsletter';
 import { isSupabaseConfigured } from '../supabase';
-import { getClient, run } from './client';
+import { NewsletterError, getClient, run } from './client';
 
 // ---------------------------------------------------------------------------
 // Lists
@@ -452,11 +452,33 @@ export async function resolveNewsletterAccess(): Promise<NewsletterAccess> {
     };
 }
 
+/**
+ * admin-users is the only privileged surface of the module: it needs the
+ * service role key, so it can never be replaced by direct table access.
+ *
+ * Distinguishing "não publicada aqui" (404) from "você não tem permissão"
+ * matters: a 404 is the norm in local development, because serving Edge
+ * Functions requires Docker. Reporting it as an authorization failure sends the
+ * operator hunting for a profile problem that does not exist.
+ */
+const ADMIN_USERS_UNAVAILABLE_HINT =
+    'A Edge Function admin-users não respondeu neste ambiente. Localmente ela exige Docker: rode `supabase functions serve admin-users`. No projeto publicado: `supabase functions deploy admin-users`.';
+
 async function invokeAdminUsers<T>(body: Record<string, unknown>): Promise<T> {
     const client = getClient();
     const { data, error } = await client.functions.invoke('admin-users', { body });
 
     if (error) {
+        // FunctionsHttpError keeps the raw Response in `context`.
+        const status = (error as { context?: Response }).context?.status;
+
+        if (status === 404) {
+            throw new NewsletterError(ADMIN_USERS_UNAVAILABLE_HINT, 'fn_missing');
+        }
+        if (status === undefined) {
+            throw new NewsletterError(`${ADMIN_USERS_UNAVAILABLE_HINT} (${error.message})`, 'fn_unreachable');
+        }
+
         // Edge Function errors surface the JSON body in `error.context`.
         throw new Error(error.message || 'falha ao chamar admin-users');
     }
@@ -469,8 +491,32 @@ async function invokeAdminUsers<T>(body: Record<string, unknown>): Promise<T> {
     return data as T;
 }
 
-export function listAdminUsers(): Promise<{ users: AdminProfile[] }> {
-    return invokeAdminUsers<{ users: AdminProfile[] }>({ action: 'list' });
+function isFunctionUnavailable(error: unknown): boolean {
+    const code = (error as NewsletterError | undefined)?.code;
+    return code === 'fn_missing' || code === 'fn_unreachable';
+}
+
+export interface AdminUsersResult {
+    users: AdminProfile[];
+    /** Set when the Edge Function is unreachable and the roster was read directly. */
+    degradedReason?: string;
+}
+
+export async function listAdminUsers(): Promise<AdminUsersResult> {
+    try {
+        return await invokeAdminUsers<AdminUsersResult>({ action: 'list' });
+    } catch (error) {
+        if (!isFunctionUnavailable(error)) throw error;
+
+        // Read-only fallback: RLS already allows an active admin to read
+        // admin_profiles, so the roster stays visible instead of a dead panel.
+        // Every mutation still requires the Edge Function.
+        const users = await listAdminProfiles();
+        return {
+            users,
+            degradedReason: error instanceof Error ? error.message : ADMIN_USERS_UNAVAILABLE_HINT,
+        };
+    }
 }
 
 export function createAdminUser(input: {
