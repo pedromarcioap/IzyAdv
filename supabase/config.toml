@@ -161,7 +161,10 @@ site_url = "http://127.0.0.1:3000"
 # A list of *exact* URLs that auth providers are permitted to redirect to post authentication.
 additional_redirect_urls = ["https://127.0.0.1:3000"]
 # How long tokens are valid for, in seconds. Defaults to 3600 (1 hour), maximum 604,800 (1 week).
-jwt_expiry = 3600
+# 1800 (30 minutes) on purpose: signOut() revokes the refresh token immediately,
+# but an Access Token that was already issued stays valid until its `exp` claim.
+# A short expiry is the only way to bound that window for a back office.
+jwt_expiry = 1800
 # JWT issuer URL. If not set, defaults to auth.external_url.
 # jwt_issuer = ""
 # Path to JWT signing key. DO NOT commit your signing keys file to git.
@@ -172,16 +175,21 @@ enable_refresh_token_rotation = true
 # Requires enable_refresh_token_rotation = true.
 refresh_token_reuse_interval = 10
 # Allow/disallow new user signups to your project.
-enable_signup = true
+# false: accounts are provisioned by a master admin through the `admin-users`
+# Edge Function (Auth Admin API), which this flag does not affect. Leaving the
+# public signup endpoint open would let anyone create an account.
+enable_signup = false
 # Allow/disallow anonymous sign-ins to your project.
 enable_anonymous_sign_ins = false
 # Allow/disallow testing manual linking of accounts
 enable_manual_linking = false
 # Passwords shorter than this value will be rejected as weak. Minimum 6, recommended 8 or more.
-minimum_password_length = 6
+# Mirrored by src/lib/auth/validation.ts (assessPasswordStrength). Sign-in never
+# re-checks the policy, so accounts with older, weaker passwords keep working.
+minimum_password_length = 12
 # Passwords that do not meet the following requirements will be rejected as weak. Supported values
 # are: `letters_digits`, `lower_upper_letters_digits`, `lower_upper_letters_digits_symbols`
-password_requirements = ""
+password_requirements = "lower_upper_letters_digits_symbols"
 
 # Configure passkey sign-ins.
 # [auth.passkey]
@@ -217,14 +225,14 @@ web3 = 30
 
 [auth.email]
 # Allow/disallow new user signups via email to your project.
-enable_signup = true
+enable_signup = false
 # If enabled, a user will be required to confirm any email change on both the old, and new email
 # addresses. If disabled, only the new email is required to confirm.
 double_confirm_changes = true
 # If enabled, users need to confirm their email address before signing in.
 enable_confirmations = false
 # If enabled, users will need to reauthenticate or have logged in recently to change their password.
-secure_password_change = false
+secure_password_change = true
 # Controls the minimum amount of time that must pass before sending another signup confirmation or password reset email.
 max_frequency = "1s"
 # Number of characters used in the email OTP.

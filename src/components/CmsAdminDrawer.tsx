@@ -70,17 +70,21 @@ export const CmsAdminDrawer: React.FC<CmsAdminDrawerProps> = ({
   const [missingTablesList, setMissingTablesList] = useState<string[]>(() => getMissingTables());
   const [revalidating, setRevalidating] = useState(false);
 
+  // `isAdmin` controls reading the roster (RLS allows master_admin and admin).
+  // Account mutations are stricter: the admin-users Edge Function accepts
+  // master_admin only, so the UI mirrors that instead of failing at submit time.
   const isAdmin = currentUser?.role === 'Master Admin' || currentUser?.role === 'Sócio Titular';
+  const isMasterAdmin = currentUser?.role === 'Master Admin';
 
   // User management state
   const [userList, setUserList] = useState<AdminUser[]>([]);
   const [userLoading, setUserLoading] = useState(false);
   const [userError, setUserError] = useState<string | null>(null);
   const [userSuccess, setUserSuccess] = useState<string | null>(null);
+  const [recoveryLink, setRecoveryLink] = useState<string | null>(null);
   const [newUserForm, setNewUserForm] = useState({
     name: '',
     email: '',
-    password: '',
     role: 'Advogado Associado' as 'Master Admin' | 'Sócio Titular' | 'Advogado Associado',
   });
 
@@ -256,27 +260,26 @@ export const CmsAdminDrawer: React.FC<CmsAdminDrawerProps> = ({
 
   const handleCreateUser = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!isAdmin) {
-      setUserError('Apenas usuários com perfil Administrador possuem autorização para criar novas contas.');
+    if (!isMasterAdmin) {
+      setUserError('A criação de contas exige perfil Master Admin; o servidor recusa a operação para outros níveis.');
       return;
     }
     if (!newUserForm.name.trim() || !newUserForm.email.trim()) {
       setUserError('Informe o nome completo e o e-mail institucional do sócio.');
       return;
     }
-    if (!newUserForm.password || newUserForm.password.length < 6) {
-      setUserError('A senha inicial deve conter pelo menos 6 caracteres.');
-      return;
-    }
-
     setUserLoading(true);
     setUserError(null);
     setUserSuccess(null);
+    setRecoveryLink(null);
 
+    // No password is collected or transmitted: the Edge Function creates the
+    // account through the Auth Admin API and returns a single-use recovery
+    // link, so the credential is chosen by its owner and never typed by an
+    // operator (nor stored in the browser, which is how the old flow leaked).
     const res = await dbCreateAdminUser({
       name: newUserForm.name,
       email: newUserForm.email,
-      password: newUserForm.password,
       role: newUserForm.role,
     });
 
@@ -285,11 +288,11 @@ export const CmsAdminDrawer: React.FC<CmsAdminDrawerProps> = ({
     if (res.error) {
       setUserError(res.error);
     } else if (res.user) {
-      setUserSuccess(`Usuário ${res.user.name || res.user.email} cadastrado com sucesso como ${res.user.role}!`);
+      setUserSuccess(`Conta de ${res.user.name || res.user.email} criada como ${res.user.role}.`);
+      setRecoveryLink(res.recoveryLink ?? null);
       setNewUserForm({
         name: '',
         email: '',
-        password: '',
         role: 'Advogado Associado',
       });
       const updated = await dbFetchAdminUsers();
@@ -298,23 +301,23 @@ export const CmsAdminDrawer: React.FC<CmsAdminDrawerProps> = ({
   };
 
   const handleDeleteUser = async (userId: string, userEmail: string) => {
-    if (!isAdmin) return;
+    if (!isMasterAdmin) return;
     if (currentUser && currentUser.email.toLowerCase() === userEmail.toLowerCase()) {
       setUserError('Não é permitido revogar o próprio usuário atualmente em sessão.');
       return;
     }
-    await dbDeleteAdminUser(userId);
+
+    setUserError(null);
+    const removal = await dbDeleteAdminUser(userId);
+
+    if (removal.error) {
+      setUserError(removal.error);
+      return;
+    }
+
     const updated = await dbFetchAdminUsers();
     setUserList(updated);
     setUserSuccess(`Acesso do usuário ${userEmail} revogado com sucesso.`);
-  };
-
-  const handleGeneratePassword = () => {
-    const randomDigits = Math.floor(1000 + Math.random() * 9000);
-    setNewUserForm((prev) => ({
-      ...prev,
-      password: `Veritas#${randomDigits}!`,
-    }));
   };
 
   const copySql = () => {
@@ -385,11 +388,10 @@ export const CmsAdminDrawer: React.FC<CmsAdminDrawerProps> = ({
           <button
             type="button"
             onClick={() => setActiveTab('themes')}
-            className={`py-3 px-3.5 flex items-center justify-center gap-1.5 border-b-2 whitespace-nowrap transition-all cursor-pointer ${
-              activeTab === 'themes'
-                ? 'border-[#D4AF37] text-[#D4AF37] bg-[#180A0E] font-semibold'
-                : 'border-transparent text-[#A79388] hover:text-[#FDF9F3]'
-            }`}
+            className={`py-3 px-3.5 flex items-center justify-center gap-1.5 border-b-2 whitespace-nowrap transition-all cursor-pointer ${activeTab === 'themes'
+              ? 'border-[#D4AF37] text-[#D4AF37] bg-[#180A0E] font-semibold'
+              : 'border-transparent text-[#A79388] hover:text-[#FDF9F3]'
+              }`}
           >
             <Palette className="w-3.5 h-3.5" />
             <span>Paletas & Cores</span>
@@ -398,11 +400,10 @@ export const CmsAdminDrawer: React.FC<CmsAdminDrawerProps> = ({
           <button
             type="button"
             onClick={() => setActiveTab('branding')}
-            className={`py-3 px-3.5 flex items-center justify-center gap-1.5 border-b-2 whitespace-nowrap transition-all cursor-pointer ${
-              activeTab === 'branding'
-                ? 'border-[#D4AF37] text-[#D4AF37] bg-[#180A0E] font-semibold'
-                : 'border-transparent text-[#A79388] hover:text-[#FDF9F3]'
-            }`}
+            className={`py-3 px-3.5 flex items-center justify-center gap-1.5 border-b-2 whitespace-nowrap transition-all cursor-pointer ${activeTab === 'branding'
+              ? 'border-[#D4AF37] text-[#D4AF37] bg-[#180A0E] font-semibold'
+              : 'border-transparent text-[#A79388] hover:text-[#FDF9F3]'
+              }`}
           >
             <Building2 className="w-3.5 h-3.5" />
             <span>Identidade</span>
@@ -411,11 +412,10 @@ export const CmsAdminDrawer: React.FC<CmsAdminDrawerProps> = ({
           <button
             type="button"
             onClick={() => setActiveTab('users')}
-            className={`py-3 px-3.5 flex items-center justify-center gap-1.5 border-b-2 whitespace-nowrap transition-all cursor-pointer ${
-              activeTab === 'users'
-                ? 'border-[#D4AF37] text-[#D4AF37] bg-[#180A0E] font-semibold'
-                : 'border-transparent text-[#A79388] hover:text-[#FDF9F3]'
-            }`}
+            className={`py-3 px-3.5 flex items-center justify-center gap-1.5 border-b-2 whitespace-nowrap transition-all cursor-pointer ${activeTab === 'users'
+              ? 'border-[#D4AF37] text-[#D4AF37] bg-[#180A0E] font-semibold'
+              : 'border-transparent text-[#A79388] hover:text-[#FDF9F3]'
+              }`}
           >
             <Users className="w-3.5 h-3.5" />
             <span>Usuários & Acessos</span>
@@ -433,11 +433,10 @@ export const CmsAdminDrawer: React.FC<CmsAdminDrawerProps> = ({
           <button
             type="button"
             onClick={() => setActiveTab('intakes')}
-            className={`py-3 px-3.5 flex items-center justify-center gap-1.5 border-b-2 whitespace-nowrap transition-all cursor-pointer relative ${
-              activeTab === 'intakes'
-                ? 'border-[#D4AF37] text-[#D4AF37] bg-[#180A0E] font-semibold'
-                : 'border-transparent text-[#A79388] hover:text-[#FDF9F3]'
-            }`}
+            className={`py-3 px-3.5 flex items-center justify-center gap-1.5 border-b-2 whitespace-nowrap transition-all cursor-pointer relative ${activeTab === 'intakes'
+              ? 'border-[#D4AF37] text-[#D4AF37] bg-[#180A0E] font-semibold'
+              : 'border-transparent text-[#A79388] hover:text-[#FDF9F3]'
+              }`}
           >
             <FileCheck2 className="w-3.5 h-3.5" />
             <span>Protocolos ({intakes.length})</span>
@@ -449,11 +448,10 @@ export const CmsAdminDrawer: React.FC<CmsAdminDrawerProps> = ({
           <button
             type="button"
             onClick={() => setActiveTab('content')}
-            className={`py-3 px-3.5 flex items-center justify-center gap-1.5 border-b-2 whitespace-nowrap transition-all cursor-pointer ${
-              activeTab === 'content'
-                ? 'border-[#D4AF37] text-[#D4AF37] bg-[#180A0E] font-semibold'
-                : 'border-transparent text-[#A79388] hover:text-[#FDF9F3]'
-            }`}
+            className={`py-3 px-3.5 flex items-center justify-center gap-1.5 border-b-2 whitespace-nowrap transition-all cursor-pointer ${activeTab === 'content'
+              ? 'border-[#D4AF37] text-[#D4AF37] bg-[#180A0E] font-semibold'
+              : 'border-transparent text-[#A79388] hover:text-[#FDF9F3]'
+              }`}
           >
             <BookOpen className="w-3.5 h-3.5" />
             <span>Práticas & Teses</span>
@@ -462,11 +460,10 @@ export const CmsAdminDrawer: React.FC<CmsAdminDrawerProps> = ({
           <button
             type="button"
             onClick={() => setActiveTab('database')}
-            className={`py-3 px-3.5 flex items-center justify-center gap-1.5 border-b-2 whitespace-nowrap transition-all cursor-pointer ${
-              activeTab === 'database'
-                ? 'border-[#D4AF37] text-[#D4AF37] bg-[#180A0E] font-semibold'
-                : 'border-transparent text-[#A79388] hover:text-[#FDF9F3]'
-            }`}
+            className={`py-3 px-3.5 flex items-center justify-center gap-1.5 border-b-2 whitespace-nowrap transition-all cursor-pointer ${activeTab === 'database'
+              ? 'border-[#D4AF37] text-[#D4AF37] bg-[#180A0E] font-semibold'
+              : 'border-transparent text-[#A79388] hover:text-[#FDF9F3]'
+              }`}
           >
             <Database className="w-3.5 h-3.5" />
             <span>Supabase DB</span>
@@ -506,11 +503,10 @@ export const CmsAdminDrawer: React.FC<CmsAdminDrawerProps> = ({
                       <div
                         key={theme.id}
                         onClick={() => handleSelectThemePreset(theme.id)}
-                        className={`p-4 rounded-xl border transition-all cursor-pointer relative flex flex-col justify-between ${
-                          isSelected
-                            ? 'border-[#D4AF37] bg-[#180A0E] shadow-[0_0_20px_rgba(212,175,55,0.15)]'
-                            : 'border-[#431520] bg-[#0B0305] hover:border-[#C5A880]/50'
-                        }`}
+                        className={`p-4 rounded-xl border transition-all cursor-pointer relative flex flex-col justify-between ${isSelected
+                          ? 'border-[#D4AF37] bg-[#180A0E] shadow-[0_0_20px_rgba(212,175,55,0.15)]'
+                          : 'border-[#431520] bg-[#0B0305] hover:border-[#C5A880]/50'
+                          }`}
                       >
                         <div>
                           <div className="flex items-center justify-between mb-1.5">
@@ -665,11 +661,10 @@ export const CmsAdminDrawer: React.FC<CmsAdminDrawerProps> = ({
                           <div className="text-[10px] text-[#A79388] uppercase">Contraste Texto Principal</div>
                           <div className="text-sm font-bold text-[#FDF9F3]">{textRatio}:1</div>
                         </div>
-                        <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
-                          textRatio >= 7 ? 'bg-emerald-950 text-emerald-300 border border-emerald-800' :
+                        <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${textRatio >= 7 ? 'bg-emerald-950 text-emerald-300 border border-emerald-800' :
                           textRatio >= 4.5 ? 'bg-blue-950 text-blue-300 border border-blue-800' :
-                          'bg-rose-950 text-rose-300 border border-rose-800'
-                        }`}>
+                            'bg-rose-950 text-rose-300 border border-rose-800'
+                          }`}>
                           {textRatio >= 7 ? 'WCAG AAA' : textRatio >= 4.5 ? 'WCAG AA' : 'Baixo Contraste'}
                         </span>
                       </div>
@@ -679,11 +674,10 @@ export const CmsAdminDrawer: React.FC<CmsAdminDrawerProps> = ({
                           <div className="text-[10px] text-[#A79388] uppercase">Contraste Dourado / Fundo</div>
                           <div className="text-sm font-bold" style={{ color: customColors.goldTone }}>{goldRatio}:1</div>
                         </div>
-                        <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
-                          goldRatio >= 4.5 ? 'bg-emerald-950 text-emerald-300 border border-emerald-800' :
+                        <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${goldRatio >= 4.5 ? 'bg-emerald-950 text-emerald-300 border border-emerald-800' :
                           goldRatio >= 3 ? 'bg-amber-950 text-amber-300 border border-amber-800' :
-                          'bg-rose-950 text-rose-300 border border-rose-800'
-                        }`}>
+                            'bg-rose-950 text-rose-300 border border-rose-800'
+                          }`}>
                           {goldRatio >= 4.5 ? 'WCAG AA' : goldRatio >= 3 ? 'Grande Porte AA' : 'Alerta Contraste'}
                         </span>
                       </div>
@@ -883,11 +877,10 @@ export const CmsAdminDrawer: React.FC<CmsAdminDrawerProps> = ({
                     Sessão: <strong className="text-[#FDF9F3]">{currentUser?.email || 'Admin'}</strong>
                   </span>
                   <span
-                    className={`text-[10px] font-data-mono px-2 py-1 rounded font-bold ${
-                      isAdmin
-                        ? 'bg-emerald-950/80 text-emerald-300 border border-emerald-800'
-                        : 'bg-amber-950/80 text-amber-300 border border-amber-800'
-                    }`}
+                    className={`text-[10px] font-data-mono px-2 py-1 rounded font-bold ${isAdmin
+                      ? 'bg-emerald-950/80 text-emerald-300 border border-emerald-800'
+                      : 'bg-amber-950/80 text-amber-300 border border-amber-800'
+                      }`}
                   >
                     {isAdmin ? 'Privilégio Administrador' : 'Acesso Consulta'}
                   </span>
@@ -902,10 +895,10 @@ export const CmsAdminDrawer: React.FC<CmsAdminDrawerProps> = ({
                   </div>
                   <div className="space-y-1">
                     <h3 className="font-display-hero text-lg font-bold text-[#FDF9F3]">
-                      Criação de Usuários Restrita a Administradores
+                      Gestão de Contas Restrita ao Master Admin
                     </h3>
                     <p className="text-xs text-[#A79388] max-w-md mx-auto leading-relaxed">
-                      A criação de novas contas e a concessão de acessos é uma prerrogativa restrita a usuários com perfil <strong className="text-[#D4AF37]">Master Admin</strong> ou <strong className="text-[#D4AF37]">Sócio Titular</strong>.
+                      Criar, revogar e alterar perfis exige <strong className="text-[#D4AF37]">Master Admin</strong>: a Edge Function admin-users confere esse nível no servidor antes de qualquer operação. Perfis editor/analista operam o conteúdo, não as credenciais.
                     </p>
                   </div>
 
@@ -927,7 +920,7 @@ export const CmsAdminDrawer: React.FC<CmsAdminDrawerProps> = ({
                       <div className="flex items-center gap-2">
                         <UserPlus className="w-4 h-4 text-[#D4AF37]" />
                         <span className="text-xs font-data-mono text-[#D4AF37] uppercase tracking-wider font-bold">
-                          Credenciar Novo Usuário / Sócio (Exclusivo Admin)
+                          Credenciar Novo Usuário / Sócio (Exclusivo Master Admin)
                         </span>
                       </div>
                       <span className="text-[10px] font-data-mono text-[#A79388] bg-[#0B0305] px-2 py-0.5 rounded border border-[#431520]">
@@ -939,6 +932,31 @@ export const CmsAdminDrawer: React.FC<CmsAdminDrawerProps> = ({
                       <div className="p-3 rounded bg-emerald-950/70 border border-emerald-800 text-emerald-200 text-xs font-data-mono flex items-center gap-2">
                         <CheckCircle className="w-4 h-4 text-emerald-400 shrink-0" />
                         <span>{userSuccess}</span>
+                      </div>
+                    )}
+
+                    {recoveryLink && (
+                      <div className="p-3 rounded bg-[#180A0E] border border-[#D4AF37]/40 space-y-2">
+                        <div className="flex items-start gap-2 text-[11px] font-data-mono text-[#C5A880]">
+                          <KeyRound className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+                          <span>
+                            Link de definição de senha (uso único, expira em 24h). Entregue por canal seguro ao
+                            titular — nenhum e-mail é disparado automaticamente:
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <code className="flex-1 truncate text-[10px] font-data-mono text-[#FDF9F3] bg-[#0B0305] border border-[#431520] rounded p-2">
+                            {recoveryLink}
+                          </code>
+                          <button
+                            type="button"
+                            onClick={() => void navigator.clipboard.writeText(recoveryLink)}
+                            title="Copiar link de definição de senha"
+                            className="p-2 rounded border border-[#431520] text-[#A79388] hover:text-[#D4AF37] hover:border-[#D4AF37]/50 cursor-pointer transition-colors"
+                          >
+                            <Copy className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
                       </div>
                     )}
 
@@ -982,27 +1000,13 @@ export const CmsAdminDrawer: React.FC<CmsAdminDrawerProps> = ({
 
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                         <div>
-                          <div className="flex items-center justify-between mb-1">
-                            <label className="text-xs font-data-mono uppercase text-[#A79388]">
-                              Senha Provisória de Acesso *
-                            </label>
-                            <button
-                              type="button"
-                              onClick={handleGeneratePassword}
-                              className="text-[10px] font-data-mono text-[#D4AF37] hover:underline flex items-center gap-1 cursor-pointer"
-                            >
-                              <KeyRound className="w-2.5 h-2.5" />
-                              <span>Gerar Senha Forte</span>
-                            </button>
+                          <label className="block text-xs font-data-mono uppercase text-[#A79388] mb-1">
+                            Credencial de Acesso
+                          </label>
+                          <div className="h-[38px] px-2.5 rounded border border-[#431520] bg-[#0B0305] flex items-center gap-2 text-[10px] font-data-mono text-[#A79388]">
+                            <KeyRound className="w-3 h-3 text-[#C5A880] shrink-0" />
+                            <span>Sem senha aqui: link de definição gerado pelo servidor</span>
                           </div>
-                          <input
-                            type="text"
-                            required
-                            value={newUserForm.password}
-                            onChange={(e) => setNewUserForm({ ...newUserForm, password: e.target.value })}
-                            placeholder="Veritas@2025!"
-                            className="w-full bg-[#0B0305] border border-[#431520] rounded p-2.5 text-xs text-[#FDF9F3] focus:border-[#C5A880] focus:outline-none font-data-mono"
-                          />
                         </div>
 
                         <div>
@@ -1026,11 +1030,16 @@ export const CmsAdminDrawer: React.FC<CmsAdminDrawerProps> = ({
                         </div>
                       </div>
 
-                      <div className="pt-2 flex justify-end">
+                      <div className="pt-2 flex items-center justify-end gap-3">
+                        {!isMasterAdmin && (
+                          <span className="text-[10px] font-data-mono text-[#A79388]">
+                            Requer perfil Master Admin.
+                          </span>
+                        )}
                         <button
                           type="submit"
-                          disabled={userLoading}
-                          className="py-2.5 px-6 rounded bg-gradient-to-r from-[#D4AF37] to-[#C5A880] text-[#0B0305] font-bold text-xs font-data-mono uppercase tracking-wider hover:brightness-110 flex items-center gap-2 cursor-pointer transition-all disabled:opacity-50"
+                          disabled={userLoading || !isMasterAdmin}
+                          className="py-2.5 px-6 rounded bg-gradient-to-r from-[#D4AF37] to-[#C5A880] text-[#0B0305] font-bold text-xs font-data-mono uppercase tracking-wider hover:brightness-110 flex items-center gap-2 cursor-pointer transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                         >
                           <UserPlus className="w-3.5 h-3.5" />
                           <span>{userLoading ? 'Provisionando...' : 'Criar e Credenciar Usuário'}</span>
@@ -1063,11 +1072,10 @@ export const CmsAdminDrawer: React.FC<CmsAdminDrawerProps> = ({
                     return (
                       <div
                         key={user.id}
-                        className={`p-3.5 rounded-lg border flex flex-col sm:flex-row sm:items-center justify-between gap-3 transition-colors ${
-                          isCurrentUser
-                            ? 'border-[#D4AF37]/50 bg-[#240A11]/60 shadow-[0_0_10px_rgba(212,175,55,0.08)]'
-                            : 'border-[#431520] bg-[#0B0305] hover:border-[#431520]'
-                        }`}
+                        className={`p-3.5 rounded-lg border flex flex-col sm:flex-row sm:items-center justify-between gap-3 transition-colors ${isCurrentUser
+                          ? 'border-[#D4AF37]/50 bg-[#240A11]/60 shadow-[0_0_10px_rgba(212,175,55,0.08)]'
+                          : 'border-[#431520] bg-[#0B0305] hover:border-[#431520]'
+                          }`}
                       >
                         <div className="flex items-center gap-3">
                           <div className="w-9 h-9 rounded-full bg-[#180A0E] border border-[#D4AF37]/30 flex items-center justify-center text-[#D4AF37] font-bold text-xs shrink-0 font-data-mono">
@@ -1094,13 +1102,12 @@ export const CmsAdminDrawer: React.FC<CmsAdminDrawerProps> = ({
                         <div className="flex items-center justify-between sm:justify-end gap-3 pt-2 sm:pt-0 border-t sm:border-t-0 border-[#431520]">
                           <div className="text-right">
                             <span
-                              className={`inline-block text-[10px] font-data-mono uppercase tracking-wider px-2 py-0.5 rounded border font-semibold ${
-                                user.role === 'Master Admin'
-                                  ? 'bg-[#D4AF37]/10 text-[#D4AF37] border-[#D4AF37]/40'
-                                  : user.role === 'Sócio Titular'
+                              className={`inline-block text-[10px] font-data-mono uppercase tracking-wider px-2 py-0.5 rounded border font-semibold ${user.role === 'Master Admin'
+                                ? 'bg-[#D4AF37]/10 text-[#D4AF37] border-[#D4AF37]/40'
+                                : user.role === 'Sócio Titular'
                                   ? 'bg-emerald-950/50 text-emerald-300 border-emerald-800'
                                   : 'bg-[#180A0E] text-[#C5A880] border-[#431520]'
-                              }`}
+                                }`}
                             >
                               {user.role}
                             </span>
@@ -1109,17 +1116,16 @@ export const CmsAdminDrawer: React.FC<CmsAdminDrawerProps> = ({
                             </div>
                           </div>
 
-                          {isAdmin && (
+                          {isMasterAdmin && (
                             <button
                               type="button"
                               disabled={isCurrentUser}
                               onClick={() => handleDeleteUser(user.id, user.email)}
                               title={isCurrentUser ? 'Não é possível revogar o próprio usuário ativo' : 'Revogar acesso deste usuário'}
-                              className={`p-2 rounded border text-xs cursor-pointer transition-colors ${
-                                isCurrentUser
-                                  ? 'border-transparent text-[#431520] opacity-30 cursor-not-allowed'
-                                  : 'border-[#431520] text-[#A79388] hover:text-red-400 hover:border-red-900/60 bg-[#180A0E]'
-                              }`}
+                              className={`p-2 rounded border text-xs cursor-pointer transition-colors ${isCurrentUser
+                                ? 'border-transparent text-[#431520] opacity-30 cursor-not-allowed'
+                                : 'border-[#431520] text-[#A79388] hover:text-red-400 hover:border-red-900/60 bg-[#180A0E]'
+                                }`}
                             >
                               <Trash2 className="w-3.5 h-3.5" />
                             </button>
@@ -1158,13 +1164,12 @@ export const CmsAdminDrawer: React.FC<CmsAdminDrawerProps> = ({
                         #{intake.protocolCode}
                       </span>
                       <span
-                        className={`text-[10px] font-data-mono px-2 py-0.5 rounded ${
-                          intake.status === 'Audiencia Confirmada'
-                            ? 'bg-emerald-950 text-emerald-300 border border-emerald-800'
-                            : intake.status === 'Conflito Verificado'
+                        className={`text-[10px] font-data-mono px-2 py-0.5 rounded ${intake.status === 'Audiencia Confirmada'
+                          ? 'bg-emerald-950 text-emerald-300 border border-emerald-800'
+                          : intake.status === 'Conflito Verificado'
                             ? 'bg-amber-950 text-amber-300 border border-amber-800'
                             : 'bg-[#2E0F17] text-[#E8D8CE] border border-[#431520]'
-                        }`}
+                          }`}
                       >
                         {intake.status}
                       </span>
@@ -1350,13 +1355,12 @@ export const CmsAdminDrawer: React.FC<CmsAdminDrawerProps> = ({
                     <span>STATUS DO BANCO DE DADOS SUPABASE</span>
                   </div>
                   <span
-                    className={`text-[10px] font-data-mono px-2 py-0.5 rounded ${
-                      isSupabaseConfigured
-                        ? missingTablesList.length > 0
-                          ? 'bg-amber-950/80 text-amber-300 border border-amber-800 font-bold'
-                          : 'bg-emerald-950 text-emerald-300 border border-emerald-800 font-bold'
-                        : 'bg-[#240A11] text-[#D4AF37] border border-[#431520] font-bold'
-                    }`}
+                    className={`text-[10px] font-data-mono px-2 py-0.5 rounded ${isSupabaseConfigured
+                      ? missingTablesList.length > 0
+                        ? 'bg-amber-950/80 text-amber-300 border border-amber-800 font-bold'
+                        : 'bg-emerald-950 text-emerald-300 border border-emerald-800 font-bold'
+                      : 'bg-[#240A11] text-[#D4AF37] border border-[#431520] font-bold'
+                      }`}
                   >
                     {isSupabaseConfigured
                       ? missingTablesList.length > 0

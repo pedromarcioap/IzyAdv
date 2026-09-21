@@ -1,12 +1,22 @@
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import { FirmConfig, IntakeProtocol, PracticeArea, LawReviewArticle, AdminUser } from '../types';
+import type { AdminRole } from '../types/newsletter';
+import { formatLastSeen, fromLegacyRole, toLegacyRole } from './auth/roles';
 
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || '';
-const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || '';
+// `import.meta.env` only exists in the Vite bundle. Reading it defensively keeps
+// this module importable from plain Node (scripts/tests/*.ts), so the auth
+// helpers that depend on it stay unit-testable without a browser.
+const env = ((import.meta as ImportMeta & { env?: Record<string, string | undefined> }).env ?? {}) as Record<
+  string,
+  string | undefined
+>;
+
+const supabaseUrl = env.VITE_SUPABASE_URL || '';
+const supabaseAnonKey = env.VITE_SUPABASE_ANON_KEY || '';
 
 export const isSupabaseConfigured = Boolean(
-  supabaseUrl && 
-  supabaseAnonKey && 
+  supabaseUrl &&
+  supabaseAnonKey &&
   supabaseUrl.startsWith('http')
 );
 
@@ -15,10 +25,15 @@ export const supabase: SupabaseClient | null = isSupabaseConfigured
   ? createClient(supabaseUrl, supabaseAnonKey)
   : null;
 
-// Local fallback storage keys
+// Local fallback storage keys for public site content.
+//
+// Authentication is deliberately NOT persisted here. The session lives in the
+// Supabase client's own storage entry (`sb-<ref>-auth-token`), and passwords
+// never reach the browser at all: they are verified server-side against the
+// bcrypt hash (per-user salt) that GoTrue keeps in auth.users.encrypted_password.
+// The previous plaintext registry (`veritas_supabase_admin_users`, which stored
+// passwords in the clear) was removed — see docs/auth/README.md.
 const STORAGE_KEYS = {
-  AUTH_USER: 'veritas_supabase_auth_user',
-  ADMIN_USERS: 'veritas_supabase_admin_users',
   FIRM_CONFIG: 'veritas_supabase_firm_config',
   INTAKES: 'veritas_supabase_intakes',
   PRACTICES: 'veritas_supabase_practices',
@@ -26,327 +41,167 @@ const STORAGE_KEYS = {
   SUBSCRIBERS: 'veritas_supabase_subscribers',
 };
 
-export const initialAdminUsers: AdminUser[] = [
-  {
-    id: 'usr-master-1',
-    name: 'Dr. Pedro Márcio (Sócio Diretor)',
-    email: 'admin@veritaslex.adv.br',
-    role: 'Master Admin',
-    lastSignIn: 'Hoje, 09:15',
-    createdAt: '15/01/2024',
-    password: 'Veritas@2025!',
-  },
-  {
-    id: 'usr-socio-2',
-    name: 'Dr. Rodrigo Mendes',
-    email: 'mendes@veritaslex.adv.br',
-    role: 'Sócio Titular',
-    lastSignIn: 'Ontem, 17:40',
-    createdAt: '20/02/2024',
-    password: 'Mendes@2025!',
-  },
-  {
-    id: 'usr-associado-3',
-    name: 'Dra. Helena Prado',
-    email: 'associado@veritaslex.adv.br',
-    role: 'Advogado Associado',
-    lastSignIn: '18/09/2026',
-    createdAt: '10/05/2025',
-    password: 'Helena@2025!',
-  },
-];
-
 // ============================================================================
-// SUPABASE AUTHENTICATION SERVICE (STRICT LOGIN & LOGOUT)
+// ADMIN USER ADMINISTRATION
+//
+// Reads go straight to `public.admin_profiles` and are filtered by RLS (a
+// signed-in user sees their own row; master_admin/admin see the roster).
+// Writes have no table policy on purpose — a client must never be able to grant
+// itself a role — so every mutation goes through the `admin-users` Edge
+// Function, which holds the service role key and re-checks the caller's role.
 // ============================================================================
 
-export async function dbFetchAdminUsers(): Promise<AdminUser[]> {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEYS.ADMIN_USERS);
-    if (!raw) {
-      localStorage.setItem(STORAGE_KEYS.ADMIN_USERS, JSON.stringify(initialAdminUsers));
-      return initialAdminUsers;
-    }
-    const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) && parsed.length > 0 ? parsed : initialAdminUsers;
-  } catch {
-    return initialAdminUsers;
-  }
+const ADMIN_USERS_FUNCTION_HINT =
+  'A Edge Function admin-users não respondeu neste ambiente. Localmente ela exige Docker (`supabase functions serve admin-users`); no projeto publicado, `supabase functions deploy admin-users`.';
+
+interface AdminUsersPayload {
+  error?: string;
+  user_id?: string | null;
+  recovery_link?: string | null;
 }
 
+/** Reads the active admin roster from `public.admin_profiles`. */
+export async function dbFetchAdminUsers(): Promise<AdminUser[]> {
+  if (!isSupabaseConfigured || !supabase) return [];
+
+  const { data, error } = await supabase
+    .from('admin_profiles')
+    .select('user_id, email, full_name, role, is_active, last_seen_at, created_at')
+    .order('created_at', { ascending: true });
+
+  if (error) {
+    handleSupabaseError('admin_profiles', 'select', error);
+    return [];
+  }
+
+  const rows = (data ?? []) as {
+    user_id: string;
+    email: string;
+    full_name: string | null;
+    role: string;
+    is_active: boolean;
+    last_seen_at: string | null;
+    created_at: string | null;
+  }[];
+
+  return rows
+    .filter((row) => row.is_active)
+    .map((row) => ({
+      id: row.user_id,
+      name: row.full_name ?? undefined,
+      email: row.email,
+      role: toLegacyRole(row.role as AdminRole),
+      lastSignIn: formatLastSeen(row.last_seen_at),
+      createdAt: row.created_at ? new Date(row.created_at).toLocaleDateString('pt-BR') : undefined,
+    }));
+}
+
+/**
+ * Creates an account through the Auth Admin API (Edge Function).
+ *
+ * The operator's password field is intentionally ignored: the account is created
+ * without a usable credential and the new member receives a single-use recovery
+ * link, so no plaintext password travels through a chat, a clipboard or this
+ * client. The link is returned so the administrator can hand it over.
+ */
 export async function dbCreateAdminUser(newUser: {
   name: string;
   email: string;
   role: 'Master Admin' | 'Sócio Titular' | 'Advogado Associado';
   password?: string;
-}): Promise<{ user: AdminUser | null; error: string | null }> {
-  const users = await dbFetchAdminUsers();
+}): Promise<{ user: AdminUser | null; error: string | null; recoveryLink?: string | null }> {
+  if (!isSupabaseConfigured || !supabase) {
+    return { user: null, error: 'Supabase não está configurado: não é possível provisionar contas.' };
+  }
 
   const normalizedEmail = newUser.email.trim().toLowerCase();
-  const exists = users.some((u) => u.email.toLowerCase() === normalizedEmail);
-  if (exists) {
-    return { user: null, error: 'Já existe um usuário cadastrado com este e-mail institucional.' };
+  const normalizedName = newUser.name.trim();
+
+  if (!normalizedEmail || !normalizedName) {
+    return { user: null, error: 'Informe o nome completo e o e-mail institucional do usuário.' };
   }
 
-  let createdId = `usr-${Date.now()}`;
-
-  // Provision in Supabase if live
-  if (isSupabaseConfigured && supabase && newUser.password) {
-    try {
-      const { data, error } = await supabase.auth.signUp({
-        email: normalizedEmail,
-        password: newUser.password,
-        options: {
-          data: {
-            name: newUser.name,
-            role: newUser.role,
-          },
-        },
-      });
-      if (error) {
-        console.warn('Supabase Auth signUp warn:', error.message);
-      } else if (data?.user) {
-        createdId = data.user.id;
-        const profileRole = newUser.role === 'Master Admin' ? 'master_admin' : newUser.role === 'Sócio Titular' ? 'admin' : 'editor';
-        await supabase.from('admin_profiles').upsert({
-          user_id: data.user.id,
-          email: normalizedEmail,
-          full_name: newUser.name,
-          role: profileRole,
-          is_active: true,
-          accepted_at: new Date().toISOString(),
-        });
-      }
-    } catch (err) {
-      console.warn('Supabase provision catch:', err);
-    }
-  }
-
-  const createdUser: AdminUser = {
-    id: createdId,
-    name: newUser.name.trim(),
-    email: normalizedEmail,
-    role: newUser.role,
-    password: newUser.password || 'Veritas@2025!',
-    createdAt: new Date().toLocaleDateString('pt-BR'),
-    lastSignIn: 'Nunca acessou',
-  };
-
-  const updatedList = [createdUser, ...users];
-  localStorage.setItem(STORAGE_KEYS.ADMIN_USERS, JSON.stringify(updatedList));
-
-  return { user: createdUser, error: null };
-}
-
-export async function dbDeleteAdminUser(userId: string): Promise<boolean> {
-  const users = await dbFetchAdminUsers();
-  const filtered = users.filter((u) => u.id !== userId);
-  localStorage.setItem(STORAGE_KEYS.ADMIN_USERS, JSON.stringify(filtered));
-  return true;
-}
-
-function translateAuthError(errorMsg: string): string {
-  const msg = errorMsg.toLowerCase();
-  if (msg.includes('invalid login credentials') || msg.includes('invalid_credentials')) {
-    return 'E-mail ou senha incorretos. Verifique suas credenciais de acesso.';
-  }
-  if (msg.includes('email not confirmed')) {
-    return 'E-mail não confirmado na base do Supabase.';
-  }
-  if (msg.includes('user not found')) {
-    return 'Usuário não localizado no sistema de credenciamento do gabinete.';
-  }
-  if (msg.includes('rate limit')) {
-    return 'Muitas tentativas seguidas. Por favor, aguarde alguns instantes antes de tentar novamente.';
-  }
-  return errorMsg;
-}
-
-export async function supabaseSignIn(email: string, password: string): Promise<{ user: AdminUser | null; error: string | null }> {
-  const normalizedEmail = email.trim().toLowerCase();
-
-  if (isSupabaseConfigured && supabase) {
-    try {
-      const { data, error } = await supabase.auth.signInWithPassword({ email: normalizedEmail, password });
-      if (error) {
-        return { user: null, error: translateAuthError(error.message) };
-      }
-      if (data.user) {
-        const users = await dbFetchAdminUsers();
-        const matched = users.find((u) => u.email.toLowerCase() === normalizedEmail);
-
-        // Check public.admin_profiles for synced role
-        let userRole: 'Master Admin' | 'Sócio Titular' | 'Advogado Associado' = matched?.role || data.user.user_metadata?.role || 'Master Admin';
-        let userName: string = matched?.name || data.user.user_metadata?.name || 'Membro do Gabinete';
-
-        try {
-          const { data: profile } = await supabase
-            .from('admin_profiles')
-            .select('*')
-            .eq('user_id', data.user.id)
-            .maybeSingle();
-
-          if (profile) {
-            if (profile.full_name) userName = profile.full_name;
-            if (profile.role === 'master_admin') userRole = 'Master Admin';
-            else if (profile.role === 'admin') userRole = 'Sócio Titular';
-            else if (profile.role === 'editor') userRole = 'Advogado Associado';
-          }
-        } catch {
-          // Fallback to local user
-        }
-
-        const adminUser: AdminUser = {
-          id: data.user.id,
-          name: userName,
-          email: data.user.email || normalizedEmail,
-          role: userRole,
-          lastSignIn: new Date().toLocaleTimeString('pt-BR'),
-        };
-        localStorage.setItem(STORAGE_KEYS.AUTH_USER, JSON.stringify(adminUser));
-        return { user: adminUser, error: null };
-      }
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? translateAuthError(err.message) : 'Falha na autenticação Supabase';
-      return { user: null, error: msg };
-    }
-  }
-
-  // Local sandbox verification against provisioned admin users
-  if (password.length < 4) {
-    return { user: null, error: 'A senha informada deve conter no mínimo 6 caracteres.' };
-  }
-
-  const users = await dbFetchAdminUsers();
-  const matchedUser = users.find((u) => u.email.toLowerCase() === normalizedEmail);
-
-  if (!matchedUser) {
-    return {
-      user: null,
-      error: 'E-mail não credenciado no gabinete. A criação de novos usuários é restrita às configurações por um Administrador.',
-    };
-  }
-
-  // Password check (accepts either configured password or fallback demo)
-  if (matchedUser.password && matchedUser.password !== password && password !== 'Veritas@2025!') {
-    return { user: null, error: 'Senha incorreta para o e-mail institucional informado.' };
-  }
-
-  const authenticatedUser: AdminUser = {
-    ...matchedUser,
-    lastSignIn: new Date().toLocaleTimeString('pt-BR'),
-  };
-
-  // Update last sign in
-  const updatedList = users.map((u) => (u.id === matchedUser.id ? authenticatedUser : u));
-  localStorage.setItem(STORAGE_KEYS.ADMIN_USERS, JSON.stringify(updatedList));
-  localStorage.setItem(STORAGE_KEYS.AUTH_USER, JSON.stringify(authenticatedUser));
-
-  return { user: authenticatedUser, error: null };
-}
-
-export async function supabaseSignUp(email: string, password: string): Promise<{ user: AdminUser | null; error: string | null }> {
-  if (isSupabaseConfigured && supabase) {
-    try {
-      const { data, error } = await supabase.auth.signUp({ email, password });
-      if (error) return { user: null, error: translateAuthError(error.message) };
-      if (data.user) {
-        const adminUser: AdminUser = {
-          id: data.user.id,
-          email: data.user.email || email,
-          role: 'Advogado Associado',
-          lastSignIn: new Date().toLocaleTimeString('pt-BR'),
-        };
-        return { user: adminUser, error: null };
-      }
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? translateAuthError(err.message) : 'Falha no cadastro Supabase';
-      return { user: null, error: msg };
-    }
-  }
-
-  const simulatedUser: AdminUser = {
-    id: `usr-${Date.now()}`,
-    email: email,
-    role: 'Advogado Associado',
-    lastSignIn: new Date().toLocaleTimeString('pt-BR'),
-  };
-  localStorage.setItem(STORAGE_KEYS.AUTH_USER, JSON.stringify(simulatedUser));
-  return { user: simulatedUser, error: null };
-}
-
-export async function supabaseSignOut(): Promise<void> {
-  if (isSupabaseConfigured && supabase) {
-    try {
-      await supabase.auth.signOut();
-    } catch (err) {
-      console.warn('Erro ao deslogar do Supabase:', err);
-    }
-  }
-  localStorage.removeItem(STORAGE_KEYS.AUTH_USER);
-}
-
-export function getCurrentSessionUser(): AdminUser | null {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEYS.AUTH_USER);
-    if (!raw) return null;
-    return JSON.parse(raw);
-  } catch {
-    return null;
-  }
-}
-
-export function subscribeToAuthChanges(onUserChange: (user: AdminUser | null) => void): () => void {
-  if (!isSupabaseConfigured || !supabase) {
-    return () => {};
-  }
-
-  // Listen to Supabase auth events
-  const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
-    if ((event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED' || event === 'USER_UPDATED') && session?.user) {
-      const normalizedEmail = (session.user.email || '').toLowerCase();
-      const users = await dbFetchAdminUsers();
-      const matched = users.find((u) => u.email.toLowerCase() === normalizedEmail);
-
-      let userRole: 'Master Admin' | 'Sócio Titular' | 'Advogado Associado' = matched?.role || session.user.user_metadata?.role || 'Master Admin';
-      let userName: string = matched?.name || session.user.user_metadata?.name || 'Membro do Gabinete';
-
-      try {
-        const { data: profile } = await supabase
-          .from('admin_profiles')
-          .select('*')
-          .eq('user_id', session.user.id)
-          .maybeSingle();
-
-        if (profile) {
-          if (profile.full_name) userName = profile.full_name;
-          if (profile.role === 'master_admin') userRole = 'Master Admin';
-          else if (profile.role === 'admin') userRole = 'Sócio Titular';
-          else if (profile.role === 'editor') userRole = 'Advogado Associado';
-        }
-      } catch {
-        // Ignore fallback
-      }
-
-      const adminUser: AdminUser = {
-        id: session.user.id,
-        name: userName,
-        email: session.user.email || normalizedEmail,
-        role: userRole,
-        lastSignIn: new Date().toLocaleTimeString('pt-BR'),
-      };
-      localStorage.setItem(STORAGE_KEYS.AUTH_USER, JSON.stringify(adminUser));
-      onUserChange(adminUser);
-    } else if (event === 'SIGNED_OUT') {
-      localStorage.removeItem(STORAGE_KEYS.AUTH_USER);
-      onUserChange(null);
-    }
+  const { data, error } = await supabase.functions.invoke('admin-users', {
+    body: {
+      action: 'create',
+      email: normalizedEmail,
+      full_name: normalizedName,
+      role: fromLegacyRole(newUser.role),
+    },
   });
 
-  return () => {
-    subscription.unsubscribe();
+  if (error) {
+    const status = (error as { context?: Response }).context?.status;
+    if (status === 404 || status === undefined) {
+      return { user: null, error: ADMIN_USERS_FUNCTION_HINT };
+    }
+    return { user: null, error: error.message || 'Falha ao criar a conta.' };
+  }
+
+  const payload = (data ?? {}) as AdminUsersPayload;
+  if (payload.error) {
+    return { user: null, error: payload.error };
+  }
+
+  return {
+    user: {
+      id: payload.user_id ?? `pendente-${normalizedEmail}`,
+      name: normalizedName,
+      email: normalizedEmail,
+      role: newUser.role,
+      lastSignIn: 'Nunca acessou',
+      createdAt: new Date().toLocaleDateString('pt-BR'),
+    },
+    recoveryLink: payload.recovery_link ?? null,
+    error: null,
   };
 }
+
+/**
+ * Revokes an account. The Edge Function ends every session for that user before
+ * deleting the record, so the removal takes effect immediately instead of when
+ * the access token happens to expire.
+ */
+export async function dbDeleteAdminUser(userId: string): Promise<{ deleted: boolean; error: string | null }> {
+  if (!isSupabaseConfigured || !supabase) {
+    return { deleted: false, error: 'Supabase não está configurado.' };
+  }
+
+  const { data, error } = await supabase.functions.invoke('admin-users', {
+    body: { action: 'delete', user_id: userId },
+  });
+
+  if (error) {
+    const status = (error as { context?: Response }).context?.status;
+    if (status === 404 || status === undefined) {
+      return { deleted: false, error: ADMIN_USERS_FUNCTION_HINT };
+    }
+    return { deleted: false, error: error.message || 'Falha ao remover a conta.' };
+  }
+
+  const payload = (data ?? {}) as AdminUsersPayload;
+  if (payload.error) {
+    return { deleted: false, error: payload.error };
+  }
+
+  return { deleted: true, error: null };
+}
+
+// ----------------------------------------------------------------------------
+// Authentication lives in src/lib/auth/*.
+//
+// Removed from this module on purpose:
+//   * the plaintext credential registry (`veritas_supabase_admin_users`) and the
+//     demo accounts it carried — passwords must exist only as server-side bcrypt
+//     hashes in auth.users.encrypted_password;
+//   * the "sandbox" sign-in that compared a password from localStorage, which
+//     made the client the verifier and turned an XSS into a full credential dump;
+//   * the ad-hoc session mirror in localStorage, superseded by verified claims
+//     (supabase.auth.getClaims) plus a server-confirmed getSession/getUser pair.
+//
+// See docs/auth/README.md for the flow and auth_verification.sql for the
+// database-level invariants that keep it honest.
+// ----------------------------------------------------------------------------
 
 // ============================================================================
 // SUPABASE DATABASE RESILIENCE & SCHEMA CACHE HANDLING
