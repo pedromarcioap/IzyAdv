@@ -57,7 +57,7 @@ export const initialAdminUsers: AdminUser[] = [
 ];
 
 // ============================================================================
-// SUPABASE AUTHENTICATION SERVICE (STRICT LOGIN ONLY)
+// SUPABASE AUTHENTICATION SERVICE (STRICT LOGIN & LOGOUT)
 // ============================================================================
 
 export async function dbFetchAdminUsers(): Promise<AdminUser[]> {
@@ -88,6 +88,8 @@ export async function dbCreateAdminUser(newUser: {
     return { user: null, error: 'Já existe um usuário cadastrado com este e-mail institucional.' };
   }
 
+  let createdId = `usr-${Date.now()}`;
+
   // Provision in Supabase if live
   if (isSupabaseConfigured && supabase && newUser.password) {
     try {
@@ -103,6 +105,17 @@ export async function dbCreateAdminUser(newUser: {
       });
       if (error) {
         console.warn('Supabase Auth signUp warn:', error.message);
+      } else if (data?.user) {
+        createdId = data.user.id;
+        const profileRole = newUser.role === 'Master Admin' ? 'master_admin' : newUser.role === 'Sócio Titular' ? 'admin' : 'editor';
+        await supabase.from('admin_profiles').upsert({
+          user_id: data.user.id,
+          email: normalizedEmail,
+          full_name: newUser.name,
+          role: profileRole,
+          is_active: true,
+          accepted_at: new Date().toISOString(),
+        });
       }
     } catch (err) {
       console.warn('Supabase provision catch:', err);
@@ -110,7 +123,7 @@ export async function dbCreateAdminUser(newUser: {
   }
 
   const createdUser: AdminUser = {
-    id: `usr-${Date.now()}`,
+    id: createdId,
     name: newUser.name.trim(),
     email: normalizedEmail,
     role: newUser.role,
@@ -132,6 +145,23 @@ export async function dbDeleteAdminUser(userId: string): Promise<boolean> {
   return true;
 }
 
+function translateAuthError(errorMsg: string): string {
+  const msg = errorMsg.toLowerCase();
+  if (msg.includes('invalid login credentials') || msg.includes('invalid_credentials')) {
+    return 'E-mail ou senha incorretos. Verifique suas credenciais de acesso.';
+  }
+  if (msg.includes('email not confirmed')) {
+    return 'E-mail não confirmado na base do Supabase.';
+  }
+  if (msg.includes('user not found')) {
+    return 'Usuário não localizado no sistema de credenciamento do gabinete.';
+  }
+  if (msg.includes('rate limit')) {
+    return 'Muitas tentativas seguidas. Por favor, aguarde alguns instantes antes de tentar novamente.';
+  }
+  return errorMsg;
+}
+
 export async function supabaseSignIn(email: string, password: string): Promise<{ user: AdminUser | null; error: string | null }> {
   const normalizedEmail = email.trim().toLowerCase();
 
@@ -139,24 +169,45 @@ export async function supabaseSignIn(email: string, password: string): Promise<{
     try {
       const { data, error } = await supabase.auth.signInWithPassword({ email: normalizedEmail, password });
       if (error) {
-        return { user: null, error: error.message };
+        return { user: null, error: translateAuthError(error.message) };
       }
       if (data.user) {
         const users = await dbFetchAdminUsers();
         const matched = users.find((u) => u.email.toLowerCase() === normalizedEmail);
 
+        // Check public.admin_profiles for synced role
+        let userRole: 'Master Admin' | 'Sócio Titular' | 'Advogado Associado' = matched?.role || data.user.user_metadata?.role || 'Master Admin';
+        let userName: string = matched?.name || data.user.user_metadata?.name || 'Membro do Gabinete';
+
+        try {
+          const { data: profile } = await supabase
+            .from('admin_profiles')
+            .select('*')
+            .eq('user_id', data.user.id)
+            .maybeSingle();
+
+          if (profile) {
+            if (profile.full_name) userName = profile.full_name;
+            if (profile.role === 'master_admin') userRole = 'Master Admin';
+            else if (profile.role === 'admin') userRole = 'Sócio Titular';
+            else if (profile.role === 'editor') userRole = 'Advogado Associado';
+          }
+        } catch {
+          // Fallback to local user
+        }
+
         const adminUser: AdminUser = {
           id: data.user.id,
-          name: matched?.name || data.user.user_metadata?.name || 'Membro do Gabinete',
+          name: userName,
           email: data.user.email || normalizedEmail,
-          role: matched?.role || data.user.user_metadata?.role || 'Master Admin',
+          role: userRole,
           lastSignIn: new Date().toLocaleTimeString('pt-BR'),
         };
         localStorage.setItem(STORAGE_KEYS.AUTH_USER, JSON.stringify(adminUser));
         return { user: adminUser, error: null };
       }
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : 'Falha na autenticação Supabase';
+      const msg = err instanceof Error ? translateAuthError(err.message) : 'Falha na autenticação Supabase';
       return { user: null, error: msg };
     }
   }
@@ -198,7 +249,7 @@ export async function supabaseSignUp(email: string, password: string): Promise<{
   if (isSupabaseConfigured && supabase) {
     try {
       const { data, error } = await supabase.auth.signUp({ email, password });
-      if (error) return { user: null, error: error.message };
+      if (error) return { user: null, error: translateAuthError(error.message) };
       if (data.user) {
         const adminUser: AdminUser = {
           id: data.user.id,
@@ -209,7 +260,7 @@ export async function supabaseSignUp(email: string, password: string): Promise<{
         return { user: adminUser, error: null };
       }
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : 'Falha no cadastro Supabase';
+      const msg = err instanceof Error ? translateAuthError(err.message) : 'Falha no cadastro Supabase';
       return { user: null, error: msg };
     }
   }
@@ -243,6 +294,58 @@ export function getCurrentSessionUser(): AdminUser | null {
   } catch {
     return null;
   }
+}
+
+export function subscribeToAuthChanges(onUserChange: (user: AdminUser | null) => void): () => void {
+  if (!isSupabaseConfigured || !supabase) {
+    return () => {};
+  }
+
+  // Listen to Supabase auth events
+  const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+    if ((event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED' || event === 'USER_UPDATED') && session?.user) {
+      const normalizedEmail = (session.user.email || '').toLowerCase();
+      const users = await dbFetchAdminUsers();
+      const matched = users.find((u) => u.email.toLowerCase() === normalizedEmail);
+
+      let userRole: 'Master Admin' | 'Sócio Titular' | 'Advogado Associado' = matched?.role || session.user.user_metadata?.role || 'Master Admin';
+      let userName: string = matched?.name || session.user.user_metadata?.name || 'Membro do Gabinete';
+
+      try {
+        const { data: profile } = await supabase
+          .from('admin_profiles')
+          .select('*')
+          .eq('user_id', session.user.id)
+          .maybeSingle();
+
+        if (profile) {
+          if (profile.full_name) userName = profile.full_name;
+          if (profile.role === 'master_admin') userRole = 'Master Admin';
+          else if (profile.role === 'admin') userRole = 'Sócio Titular';
+          else if (profile.role === 'editor') userRole = 'Advogado Associado';
+        }
+      } catch {
+        // Ignore fallback
+      }
+
+      const adminUser: AdminUser = {
+        id: session.user.id,
+        name: userName,
+        email: session.user.email || normalizedEmail,
+        role: userRole,
+        lastSignIn: new Date().toLocaleTimeString('pt-BR'),
+      };
+      localStorage.setItem(STORAGE_KEYS.AUTH_USER, JSON.stringify(adminUser));
+      onUserChange(adminUser);
+    } else if (event === 'SIGNED_OUT') {
+      localStorage.removeItem(STORAGE_KEYS.AUTH_USER);
+      onUserChange(null);
+    }
+  });
+
+  return () => {
+    subscription.unsubscribe();
+  };
 }
 
 // ============================================================================

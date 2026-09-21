@@ -36,6 +36,7 @@ import {
 import { getActiveTheme } from './data/colorThemes';
 import {
   getCurrentSessionUser,
+  subscribeToAuthChanges,
   supabaseSignOut,
   dbFetchFirmConfig,
   dbSaveFirmConfig,
@@ -80,7 +81,7 @@ export default function App() {
   const [prefilledCourt, setPrefilledCourt] = useState<string>('');
   const [prefilledSummary, setPrefilledSummary] = useState<string>('');
 
-  // Sincronização inicial com Supabase Database
+  // Sincronização inicial com Supabase Database & Auth Listener
   useEffect(() => {
     async function loadSupabaseData() {
       try {
@@ -99,6 +100,15 @@ export default function App() {
       }
     }
     loadSupabaseData();
+
+    // Inscrever ouvinte de autenticação Supabase
+    const unsubscribe = subscribeToAuthChanges((user) => {
+      setCurrentUser(user);
+    });
+
+    return () => {
+      unsubscribe();
+    };
   }, []);
 
   // Theme resolution

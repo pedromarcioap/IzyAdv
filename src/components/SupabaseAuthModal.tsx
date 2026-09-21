@@ -70,10 +70,10 @@ export const SupabaseAuthModal: React.FC<SupabaseAuthModalProps> = ({
         <div className="mb-4 p-2.5 rounded bg-[#0B0305] border border-[#431520] flex items-center justify-between text-[11px] font-data-mono">
           <span className="text-[#A79388] flex items-center gap-1.5">
             <span className={`w-2 h-2 rounded-full ${isSupabaseConfigured ? 'bg-emerald-400 animate-pulse' : 'bg-[#D4AF37]'}`}></span>
-            Conexão Supabase:
+            Instância Supabase:
           </span>
           <span className={isSupabaseConfigured ? 'text-emerald-300 font-bold' : 'text-[#D4AF37] font-bold'}>
-            {isSupabaseConfigured ? 'Cloud Ativa' : 'Sandbox Ativo'}
+            {isSupabaseConfigured ? 'Supabase Local (http://127.0.0.1:54321)' : 'Modo Sandbox Local'}
           </span>
         </div>
 
@@ -119,31 +119,41 @@ export const SupabaseAuthModal: React.FC<SupabaseAuthModalProps> = ({
               disabled={loading}
               className="w-full py-3 rounded bg-gradient-to-r from-[#D4AF37] to-[#C5A880] text-[#0B0305] font-bold text-xs font-data-mono uppercase tracking-wider hover:brightness-110 flex items-center justify-center gap-2 shadow-[0_0_15px_rgba(212,175,55,0.25)] transition-all cursor-pointer disabled:opacity-50"
             >
-              <span>{loading ? 'Validando Credenciais...' : 'Autenticar com Supabase'}</span>
+              <span>{loading ? 'Validando Credenciais...' : 'Entrar no Gabinete'}</span>
               <ArrowRight className="w-3.5 h-3.5" />
             </button>
 
             {/* Demo Credentials Quick Switcher */}
             <div className="pt-2">
               <span className="text-[10px] font-data-mono uppercase tracking-wider text-[#A79388] block mb-1.5 text-center">
-                Acessos Rápidos de Demonstração
+                Preenchimento Rápido (Contas de Teste Supabase Local)
               </span>
-              <div className="grid grid-cols-2 gap-2">
+              <div className="grid grid-cols-3 gap-1.5">
                 <button
                   type="button"
                   onClick={() => handleFillDemo('admin@veritaslex.adv.br', 'Veritas@2025!')}
-                  className="py-1.5 px-2 rounded bg-[#180A0E] border border-[#431520] hover:border-[#D4AF37] text-[11px] font-data-mono text-[#E8D8CE] hover:text-[#D4AF37] flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+                  className="py-1.5 px-1 rounded bg-[#180A0E] border border-[#431520] hover:border-[#D4AF37] text-[10px] font-data-mono text-[#E8D8CE] hover:text-[#D4AF37] flex items-center justify-center gap-1 transition-colors cursor-pointer"
                 >
-                  <UserCheck className="w-3 h-3 text-[#D4AF37]" />
-                  <span>Master Admin</span>
+                  <UserCheck className="w-3 h-3 text-[#D4AF37] shrink-0" />
+                  <span className="truncate">Master</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => handleFillDemo('mendes@veritaslex.adv.br', 'Mendes@2025!')}
+                  className="py-1.5 px-1 rounded bg-[#180A0E] border border-[#431520] hover:border-[#C5A880] text-[10px] font-data-mono text-[#E8D8CE] hover:text-[#C5A880] flex items-center justify-center gap-1 transition-colors cursor-pointer"
+                >
+                  <UserCheck className="w-3 h-3 text-[#C5A880] shrink-0" />
+                  <span className="truncate">Sócio</span>
                 </button>
 
                 <button
                   type="button"
                   onClick={() => handleFillDemo('associado@veritaslex.adv.br', 'Helena@2025!')}
-                  className="py-1.5 px-2 rounded bg-[#180A0E] border border-[#431520] hover:border-[#C5A880] text-[11px] font-data-mono text-[#A79388] hover:text-[#FDF9F3] flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+                  className="py-1.5 px-1 rounded bg-[#180A0E] border border-[#431520] hover:border-[#A79388] text-[10px] font-data-mono text-[#A79388] hover:text-[#FDF9F3] flex items-center justify-center gap-1 transition-colors cursor-pointer"
                 >
-                  <span>Adv. Associado</span>
+                  <UserCheck className="w-3 h-3 text-[#A79388] shrink-0" />
+                  <span className="truncate">Associado</span>
                 </button>
               </div>
             </div>
