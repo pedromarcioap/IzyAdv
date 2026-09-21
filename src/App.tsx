@@ -333,6 +333,9 @@ export default function App() {
             onAddArticle={handleAddArticle}
             currentUser={currentUser}
             onLogout={() => void handleLogout()}
+            newsletterRole={newsletterRole}
+            newsletterAccess={newsletterAccess}
+            onRetryNewsletterAccess={handleOpenNewsletter}
           />
         </ProtectedRoute>
       )}
@@ -340,15 +343,26 @@ export default function App() {
       {/* Protected route: newsletter back office (#/admin/newsletter) */}
       {isNewsletterRoute && (
         <ProtectedRoute requestedPath={requestedPath} allow={CONTENT_ROLES}>
-          <NewsletterAdminPanel
+          <CmsAdminDrawer
             isOpen
+            initialTab="newsletter"
             onClose={() => {
               void logActivity('newsletter_panel_close', 'Painel do informativo fechado');
               navigate(APP_ROUTES.admin);
             }}
-            role={newsletterRole}
-            access={newsletterAccess}
-            onRetryAccess={handleOpenNewsletter}
+            firmConfig={firmConfig}
+            onUpdateFirmConfig={handleUpdateFirmConfig}
+            intakes={intakes}
+            onUpdateIntakes={handleUpdateIntakes}
+            practices={practices}
+            onAddPractice={handleAddPractice}
+            articles={articles}
+            onAddArticle={handleAddArticle}
+            currentUser={currentUser}
+            onLogout={() => void handleLogout()}
+            newsletterRole={newsletterRole}
+            newsletterAccess={newsletterAccess}
+            onRetryNewsletterAccess={handleOpenNewsletter}
           />
         </ProtectedRoute>
       )}

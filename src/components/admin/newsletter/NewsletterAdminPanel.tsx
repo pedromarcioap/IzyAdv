@@ -74,14 +74,17 @@ import { SettingsPanels } from './SettingsPanels';
 export interface NewsletterAdminPanelProps {
     isOpen: boolean;
     onClose: () => void;
+    /** The authenticated operator's role within the newsletter module. */
     role: AdminRole | null;
     /**
-     * Why the module is closed. Optional so the panel still renders inside
-     * stories/tests that only care about an authorised visitor.
+     * Optional pre-loaded access state. If omitted, the panel uses `role` to construct
+     * a stub access record for simple environments or stories.
      */
     access?: NewsletterAccess | null;
     /** Re-runs the authorisation check; used by the "verificar novamente" button. */
     onRetryAccess?: () => void;
+    /** Whether to render embedded inline inside a container rather than full-screen fixed modal */
+    embedded?: boolean;
 }
 
 type TabId = 'dashboard' | 'subscribers' | 'campaigns' | 'audiences' | 'settings';
@@ -604,6 +607,7 @@ export const NewsletterAdminPanel: React.FC<NewsletterAdminPanelProps> = ({
     role,
     access = null,
     onRetryAccess,
+    embedded = false,
 }) => {
     const canWrite = role !== null && WRITE_ROLES.includes(role);
     const canAdmin = role === 'master_admin' || role === 'admin';
@@ -642,12 +646,12 @@ export const NewsletterAdminPanel: React.FC<NewsletterAdminPanelProps> = ({
     }, [push]);
 
     useEffect(() => {
-        if (!isOpen) return;
+        if (!isOpen && !embedded) return;
         void reloadAudiences();
-    }, [isOpen, reloadAudiences]);
+    }, [isOpen, embedded, reloadAudiences]);
 
     useEffect(() => {
-        if (!isOpen) return;
+        if (!isOpen || embedded) return;
 
         const onKeyDown = (event: KeyboardEvent) => {
             if (event.key === 'Escape') onClose();
@@ -661,13 +665,17 @@ export const NewsletterAdminPanel: React.FC<NewsletterAdminPanelProps> = ({
             document.removeEventListener('keydown', onKeyDown);
             document.body.style.overflow = '';
         };
-    }, [isOpen, onClose]);
+    }, [isOpen, onClose, embedded]);
 
-    if (!isOpen) return null;
+    if (!isOpen && !embedded) return null;
+
+    const wrapperClasses = embedded
+        ? "w-full flex flex-col bg-[#13060A] border border-[#431520] rounded-xl overflow-hidden shadow-xl min-h-[600px]"
+        : "fixed inset-0 z-[60] flex flex-col bg-[var(--theme-bg)]";
 
     return (
         <ToastContext.Provider value={{ push }}>
-            <div className="fixed inset-0 z-[60] flex flex-col bg-[var(--theme-bg)]" role="dialog" aria-modal="true" aria-label="Painel de newsletter">
+            <div className={wrapperClasses} role="dialog" aria-modal={!embedded} aria-label="Painel de newsletter">
                 <header className="flex flex-wrap items-center justify-between gap-3 border-b border-[var(--theme-border)] bg-[var(--theme-card)] px-5 py-3">
                     <div className="flex items-center gap-3">
                         <span className="flex h-9 w-9 items-center justify-center rounded-lg border border-[var(--theme-gold)] text-[var(--theme-gold)]">
@@ -692,9 +700,11 @@ export const NewsletterAdminPanel: React.FC<NewsletterAdminPanelProps> = ({
                             <ShieldCheck className="mr-1 h-3 w-3" aria-hidden="true" />
                             {role ?? 'sem perfil'}
                         </Badge>
-                        <Button size="sm" variant="ghost" onClick={onClose} icon={<X className="h-4 w-4" aria-hidden="true" />}>
-                            Fechar
-                        </Button>
+                        {!embedded && (
+                            <Button size="sm" variant="ghost" onClick={onClose} icon={<X className="h-4 w-4" aria-hidden="true" />}>
+                                Fechar
+                            </Button>
+                        )}
                     </div>
                 </header>
 

@@ -21,6 +21,7 @@ import {
   ShieldAlert,
   KeyRound,
   Mail,
+  Lock,
   AlertCircle,
 } from 'lucide-react';
 import { FirmConfig, IntakeProtocol, PracticeArea, LawReviewArticle, AdminUser } from '../types';
@@ -34,6 +35,11 @@ import {
   resetMissingTables,
   SUPABASE_SCHEMA_SQL,
 } from '../lib/supabase';
+import { SessionSecurityModal } from './auth/SessionSecurityModal';
+import { NewsletterAdminPanel } from './admin/newsletter/NewsletterAdminPanel';
+import type { AdminRole, NewsletterAccess } from '../types/newsletter';
+
+export type AdminTab = 'themes' | 'branding' | 'users' | 'session' | 'newsletter' | 'intakes' | 'content' | 'database';
 
 interface CmsAdminDrawerProps {
   isOpen: boolean;
@@ -48,6 +54,10 @@ interface CmsAdminDrawerProps {
   onAddArticle: (article: LawReviewArticle) => void;
   currentUser: AdminUser | null;
   onLogout: () => void;
+  initialTab?: AdminTab;
+  newsletterRole?: AdminRole | null;
+  newsletterAccess?: NewsletterAccess | null;
+  onRetryNewsletterAccess?: () => void;
 }
 
 export const CmsAdminDrawer: React.FC<CmsAdminDrawerProps> = ({
@@ -63,8 +73,18 @@ export const CmsAdminDrawer: React.FC<CmsAdminDrawerProps> = ({
   onAddArticle,
   currentUser,
   onLogout,
+  initialTab,
+  newsletterRole,
+  newsletterAccess,
+  onRetryNewsletterAccess,
 }) => {
-  const [activeTab, setActiveTab] = useState<'branding' | 'themes' | 'users' | 'intakes' | 'content' | 'database'>('themes');
+  const [activeTab, setActiveTab] = useState<AdminTab>(initialTab || 'themes');
+
+  useEffect(() => {
+    if (isOpen && initialTab) {
+      setActiveTab(initialTab);
+    }
+  }, [isOpen, initialTab]);
   const [showSqlSchema, setShowSqlSchema] = useState(false);
   const [copiedSql, setCopiedSql] = useState(false);
   const [missingTablesList, setMissingTablesList] = useState<string[]>(() => getMissingTables());
@@ -428,6 +448,30 @@ export const CmsAdminDrawer: React.FC<CmsAdminDrawerProps> = ({
                 REST
               </span>
             )}
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setActiveTab('session')}
+            className={`py-3 px-3.5 flex items-center justify-center gap-1.5 border-b-2 whitespace-nowrap transition-all cursor-pointer ${activeTab === 'session'
+              ? 'border-[#D4AF37] text-[#D4AF37] bg-[#180A0E] font-semibold'
+              : 'border-transparent text-[#A79388] hover:text-[#FDF9F3]'
+              }`}
+          >
+            <Lock className="w-3.5 h-3.5" />
+            <span>Sessão & Segurança</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setActiveTab('newsletter')}
+            className={`py-3 px-3.5 flex items-center justify-center gap-1.5 border-b-2 whitespace-nowrap transition-all cursor-pointer ${activeTab === 'newsletter'
+              ? 'border-[#D4AF37] text-[#D4AF37] bg-[#180A0E] font-semibold'
+              : 'border-transparent text-[#A79388] hover:text-[#FDF9F3]'
+              }`}
+          >
+            <Mail className="w-3.5 h-3.5" />
+            <span>Informativo</span>
           </button>
 
           <button
@@ -1138,6 +1182,56 @@ export const CmsAdminDrawer: React.FC<CmsAdminDrawerProps> = ({
               </div>
             </div>
           )}
+
+          {/* TAB: SESSÃO & SEGURANÇA */}
+          {activeTab === 'session' && (
+            <div className="space-y-6">
+              <div className="bg-[#180A0E] p-4 rounded-xl border border-[#431520] flex items-center justify-between gap-3">
+                <div>
+                  <div className="flex items-center gap-2 mb-1">
+                    <Lock className="w-4 h-4 text-[#D4AF37]" />
+                    <span className="text-xs font-data-mono text-[#D4AF37] uppercase tracking-wider font-bold">
+                      Configurações de Sessão & Dispositivos Conectados
+                    </span>
+                  </div>
+                  <p className="text-xs text-[#A79388]">
+                    Gerencie sessões ativas, monitore conexões autorizadas e encerre acessos de outros dispositivos em tempo real.
+                  </p>
+                </div>
+              </div>
+
+              <SessionSecurityModal isOpen={true} onClose={onClose} embedded={true} />
+            </div>
+          )}
+
+          {/* TAB: INFORMATIVO & NEWSLETTER */}
+          {activeTab === 'newsletter' && (
+            <div className="space-y-6">
+              <div className="bg-[#180A0E] p-4 rounded-xl border border-[#431520] flex items-center justify-between gap-3">
+                <div>
+                  <div className="flex items-center gap-2 mb-1">
+                    <Mail className="w-4 h-4 text-[#D4AF37]" />
+                    <span className="text-xs font-data-mono text-[#D4AF37] uppercase tracking-wider font-bold">
+                      Configurações do Informativo & Campanhas
+                    </span>
+                  </div>
+                  <p className="text-xs text-[#A79388]">
+                    Gestão editorial de boletins, segmentação de público-alvo, métricas de envio e remetentes.
+                  </p>
+                </div>
+              </div>
+
+              <NewsletterAdminPanel
+                isOpen={true}
+                onClose={onClose}
+                role={newsletterRole ?? null}
+                access={newsletterAccess ?? null}
+                onRetryAccess={onRetryNewsletterAccess}
+                embedded={true}
+              />
+            </div>
+          )}
+
           {activeTab === 'intakes' && (
             <div className="space-y-4">
               <div className="flex items-center justify-between pb-2 border-b border-[#431520]">

@@ -9,6 +9,7 @@ import { APP_ROUTES } from '../../lib/router/routes';
 interface SessionSecurityModalProps {
     isOpen: boolean;
     onClose: () => void;
+    embedded?: boolean;
 }
 
 /**
@@ -18,7 +19,7 @@ interface SessionSecurityModalProps {
  * `signOut()` defaults to 'global' — the wrong default for a "Sair" button, and
  * a surprising one when the operator only meant to end this browser's session.
  */
-export const SessionSecurityModal: React.FC<SessionSecurityModalProps> = ({ isOpen, onClose }) => {
+export const SessionSecurityModal: React.FC<SessionSecurityModalProps> = ({ isOpen, onClose, embedded = false }) => {
     const { signOut, user } = useAuth();
 
     const [listing, setListing] = useState<SessionsListing>({ sessions: [] });
