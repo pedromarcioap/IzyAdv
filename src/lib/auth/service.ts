@@ -20,7 +20,7 @@
 
 import type { Session, SupabaseClient, User } from '@supabase/supabase-js';
 import type { AdminProfile, AdminRole } from '../../types/newsletter';
-import { supabase } from '../supabase';
+import { getSupabaseClient } from '../supabase';
 import { AuthError, classifyAuthError, isSessionInvalidError, unconfiguredError, type AuthErrorLike } from './errors';
 import { isKnownRole } from './roles';
 import { normalizeEmail, type LoginCredentials } from './validation';
@@ -56,6 +56,7 @@ on conflict (user_id) do update
    set role = excluded.role, is_active = true, accepted_at = now();`;
 
 function client(): SupabaseClient {
+    const supabase = getSupabaseClient();
     if (!supabase) throw unconfiguredError();
     return supabase;
 }
@@ -75,7 +76,7 @@ export function decodeJwtPayloadForDisplay(accessToken: string | null | undefine
     if (parts.length < 2) return null;
 
     try {
-        const base64 = parts[1].replace(/-/g, '+').replace(/_/g, '/');
+        const base64 = parts[1].replaceAll('-', '+').replaceAll('_', '/');
         const padded = base64.padEnd(base64.length + ((4 - (base64.length % 4)) % 4), '=');
         const json = typeof atob === 'function' ? atob(padded) : '';
         if (!json) return null;
@@ -156,6 +157,7 @@ export function purgeSessionStorage(): void {
 
 /** Ends the local session and guarantees the storage is clean either way. */
 export async function clearLocalSession(): Promise<void> {
+    const supabase = getSupabaseClient();
     if (!supabase) {
         purgeSessionStorage();
         return;
@@ -170,32 +172,9 @@ export async function clearLocalSession(): Promise<void> {
     }
 }
 
-/**
- * Reads the stored session, verifies the token and confirms it with the Auth
- * server. Returns `null` for "not signed in", and clears the session when the
- * server says it is no longer valid (revoked, deleted user, expired refresh).
- */
-export async function verifySession(): Promise<SessionSnapshot | null> {
-    const supabaseClient = supabase;
-    if (!supabaseClient) return null;
-
-    const { data, error } = await supabaseClient.auth.getSession();
-
-    if (error) {
-        if (isSessionInvalidError(error)) {
-            await clearLocalSession();
-            return null;
-        }
-        throw classifyAuthError(error);
-    }
-
-    if (!data.session) return null;
-
-    const session = data.session;
-
-    let claims: Record<string, unknown> | null = null;
+async function safeReadVerifiedClaims(supabaseClient: SupabaseClient): Promise<Record<string, unknown> | null> {
     try {
-        claims = await readVerifiedClaims(supabaseClient);
+        return await readVerifiedClaims(supabaseClient);
     } catch (error) {
         // A network failure while verifying claims must not, by itself, destroy
         // a session that may still be perfectly valid. `getUser()` below is the
@@ -203,8 +182,15 @@ export async function verifySession(): Promise<SessionSnapshot | null> {
         // throws through.
         if (!(error instanceof AuthError) || !error.retriable) throw error;
         console.warn('[auth] verificação de claims indisponível; confirmando com getUser():', error.message);
+        return null;
     }
+}
 
+async function confirmUserSession(
+    supabaseClient: SupabaseClient,
+    session: Session,
+    claims: Record<string, unknown> | null
+): Promise<SessionSnapshot | null> {
     try {
         // Confirms with the server that the session still exists: `getSession()`
         // cannot tell an active session from one revoked by a sign-out elsewhere.
@@ -241,6 +227,31 @@ export async function verifySession(): Promise<SessionSnapshot | null> {
 
         throw error;
     }
+}
+
+/**
+ * Reads the stored session, verifies the token and confirms it with the Auth
+ * server. Returns `null` for "not signed in", and clears the session when the
+ * server says it is no longer valid (revoked, deleted user, expired refresh).
+ */
+export async function verifySession(): Promise<SessionSnapshot | null> {
+    const supabaseClient = getSupabaseClient();
+    if (!supabaseClient) return null;
+
+    const { data, error } = await supabaseClient.auth.getSession();
+
+    if (error) {
+        if (isSessionInvalidError(error)) {
+            await clearLocalSession();
+            return null;
+        }
+        throw classifyAuthError(error);
+    }
+
+    if (!data.session) return null;
+
+    const claims = await safeReadVerifiedClaims(supabaseClient);
+    return confirmUserSession(supabaseClient, data.session, claims);
 }
 
 // ---------------------------------------------------------------------------
@@ -339,6 +350,7 @@ export async function resolveIdentity(snapshot: SessionSnapshot): Promise<Identi
  * would attempt.
  */
 export async function signInWithPassword(credentials: LoginCredentials): Promise<SignInOutcome> {
+    const supabase = getSupabaseClient();
     if (!supabase) {
         return { identity: null, error: unconfiguredError().message, denial: null };
     }
@@ -396,6 +408,7 @@ export async function signInWithPassword(credentials: LoginCredentials): Promise
  * 'global' (every device) or 'others' (every device except this one).
  */
 export async function signOut(scope: LogoutScope = 'local'): Promise<{ error: string | null }> {
+    const supabase = getSupabaseClient();
     if (!supabase) return { error: null };
 
     try {
@@ -430,6 +443,7 @@ export async function signOut(scope: LogoutScope = 'local'): Promise<{ error: st
  * the `auth` schema and is not reachable through the Data API.
  */
 export async function listActiveSessions(): Promise<SessionsListing> {
+    const supabase = getSupabaseClient();
     if (!supabase) return { sessions: [], unavailableReason: unconfiguredError().message };
 
     const { data, error } = await supabase.rpc('my_auth_sessions');
@@ -448,7 +462,7 @@ export async function listActiveSessions(): Promise<SessionsListing> {
 
     return {
         sessions: rows.map((row) => ({
-            sessionId: String(row.session_id ?? ''),
+            sessionId: typeof row.session_id === 'string' ? row.session_id : '',
             createdAt: (row.created_at as string | null) ?? null,
             refreshedAt: (row.refreshed_at as string | null) ?? null,
             notAfter: (row.not_after as string | null) ?? null,
@@ -461,6 +475,7 @@ export async function listActiveSessions(): Promise<SessionsListing> {
 
 /** Best-effort heartbeat so `admin_profiles.last_seen_at` reflects reality. */
 export async function markSessionSeen(): Promise<void> {
+    const supabase = getSupabaseClient();
     if (!supabase) return;
     try {
         await supabase.rpc('mark_my_session_seen');
@@ -475,6 +490,7 @@ export async function markSessionSeen(): Promise<void> {
  * actor. Failures are swallowed: an audit write must never block a logout.
  */
 export async function logAuthEvent(action: string, summary: string): Promise<void> {
+    const supabase = getSupabaseClient();
     if (!supabase) return;
     try {
         await supabase.rpc('log_my_activity', {
@@ -499,7 +515,7 @@ export type AuthEventName =
     | 'USER_UPDATED'
     | 'PASSWORD_RECOVERY'
     | 'MFA_CHALLENGE_VERIFIED'
-    | string;
+    | (string & {});
 
 /**
  * Bridges Supabase auth events to the provider.
@@ -508,6 +524,7 @@ export type AuthEventName =
  * reports, so the provider re-reads the session itself.
  */
 export function subscribeToAuthEvents(listener: (event: AuthEventName) => void): () => void {
+    const supabase = getSupabaseClient();
     if (!supabase) return () => { };
 
     const { data } = supabase.auth.onAuthStateChange((event) => {

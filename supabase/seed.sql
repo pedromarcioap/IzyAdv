@@ -503,7 +503,85 @@ INSERT INTO public.newsletter_subscribers (
 ON CONFLICT (email) DO UPDATE SET
   preference_area = EXCLUDED.preference_area;
 
+
+-- H) BOOTSTRAP DO MASTER ADMIN (admin@veritaslex.adv.br)
+DO $$
+DECLARE
+  v_email    TEXT := 'admin@veritaslex.adv.br';
+  v_password TEXT := 'Veritas@2025!';
+  v_name     TEXT := 'Master Admin';
+  v_user_id  UUID;
+BEGIN
+  SELECT u.id INTO v_user_id
+    FROM auth.users u
+   WHERE LOWER(u.email) = LOWER(v_email)
+   LIMIT 1;
+
+  IF v_user_id IS NULL THEN
+    v_user_id := gen_random_uuid();
+
+    INSERT INTO auth.users (
+      id, instance_id, aud, role, email, encrypted_password, email_confirmed_at,
+      raw_app_meta_data, raw_user_meta_data, created_at, updated_at,
+      confirmation_token, recovery_token, email_change, email_change_token_new
+    )
+    VALUES (
+      v_user_id,
+      '00000000-0000-0000-0000-000000000000',
+      'authenticated',
+      'authenticated',
+      v_email,
+      extensions.crypt(v_password, extensions.gen_salt('bf')),
+      NOW(),
+      jsonb_build_object(
+        'provider', 'email',
+        'providers', jsonb_build_array('email'),
+        'newsletter_role', 'master_admin'
+      ),
+      jsonb_build_object('name', v_name),
+      NOW(),
+      NOW(),
+      '', '', '', ''
+    );
+
+    INSERT INTO auth.identities (
+      id, user_id, identity_data, provider, provider_id,
+      last_sign_in_at, created_at, updated_at
+    )
+    VALUES (
+      gen_random_uuid(),
+      v_user_id,
+      jsonb_build_object('sub', v_user_id::text, 'email', v_email),
+      'email',
+      v_user_id::text,
+      NOW(),
+      NOW(),
+      NOW()
+    );
+  ELSE
+    UPDATE auth.users
+       SET raw_app_meta_data = COALESCE(raw_app_meta_data, '{}'::jsonb)
+                             || jsonb_build_object('newsletter_role', 'master_admin')
+     WHERE id = v_user_id;
+  END IF;
+
+  INSERT INTO public.admin_profiles (
+    user_id, email, full_name, role, is_active, accepted_at, created_at
+  )
+  VALUES (
+    v_user_id, v_email, v_name, 'master_admin', true, NOW(), NOW()
+  )
+  ON CONFLICT (user_id) DO UPDATE
+     SET email       = EXCLUDED.email,
+         full_name   = COALESCE(public.admin_profiles.full_name, EXCLUDED.full_name),
+         role        = 'master_admin',
+         is_active   = true,
+         accepted_at = COALESCE(public.admin_profiles.accepted_at, NOW());
+END
+$$;
+
 COMMIT;
+
 
 -- ============================================================================
 -- 5. VERIFICAÇÃO DE INTEGRIDADE (SANITY CHECK QUERIES)

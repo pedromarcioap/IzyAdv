@@ -18,7 +18,7 @@ import {
     validateLoginForm,
     type LoginFieldErrors,
 } from '../../lib/auth/validation';
-import { isSupabaseConfigured } from '../../lib/supabase';
+import { isSupabaseConfiguredNow } from '../../lib/supabase';
 import { navigate } from '../../lib/router/hashRouter';
 import { APP_ROUTES } from '../../lib/router/routes';
 import { AccessDeniedScreen } from './AuthStatusScreens';
@@ -65,7 +65,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ redirectTo, cameFromProtec
         emailRef.current?.focus();
     }, []);
 
-    const handleSubmit = async (event: React.FormEvent) => {
+    const handleSubmit = async (event: React.SubmitEvent<HTMLFormElement>) => {
         event.preventDefault();
         setFormError(null);
 
@@ -139,16 +139,15 @@ export const LoginPage: React.FC<LoginPageProps> = ({ redirectTo, cameFromProtec
                 </p>
 
                 {cameFromProtectedRoute && !formError && (
-                    <div
+                    <output
                         className="mb-4 flex items-start gap-2 rounded border border-[#431520] bg-[#180A0E] p-3 font-data-mono text-[11px] leading-relaxed text-[#C5A880]"
-                        role="status"
                     >
                         <Info className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden="true" />
                         <span>É necessário entrar para acessar esta área do painel.</span>
-                    </div>
+                    </output>
                 )}
 
-                {!isSupabaseConfigured && (
+                {!isSupabaseConfiguredNow() && (
                     <div className="mb-4 flex items-start gap-2 rounded border border-[#D4AF37]/40 bg-[#180A0E] p-3 font-data-mono text-[11px] leading-relaxed text-[#E8D8CE]">
                         <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-[#D4AF37]" aria-hidden="true" />
                         <span>{UNCONFIGURED_MESSAGE}</span>

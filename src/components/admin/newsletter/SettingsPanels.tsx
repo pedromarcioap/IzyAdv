@@ -28,25 +28,20 @@ import {
     SEGMENT_OPERATORS,
     countSegment,
     createAdminUser,
-    createList,
     createProvider,
     createSegment,
     deleteAdminUser,
-    deleteList,
     deleteProvider,
     deleteSegment,
     generateRecoveryLink,
     getSettings,
     listAdminUsers,
     listAuditLogs,
-    listLists,
     listProviders,
-    listSegments,
     previewSegment,
     setAdminUserActive,
     setAdminUserRole,
     setDefaultProvider,
-    updateList,
     updateProvider,
     updateSegment,
     updateSettings,
@@ -72,12 +67,11 @@ import {
     Modal,
     Select,
     Spinner,
-    Stat,
-    Tabs,
     Textarea,
     Toggle,
     ToastContext,
 } from './ui';
+import { ListsManager } from './ListsManager';
 
 export interface SettingsPanelsProps {
     section: 'audiences' | 'settings';
@@ -101,7 +95,7 @@ export const SettingsPanels: React.FC<SettingsPanelsProps> = ({
     if (section === 'audiences') {
         return (
             <div className="flex flex-col gap-5">
-                <ListsPanel canWrite={canWrite} lists={lists} onReload={onReloadAudiences} />
+                <ListsManager canWrite={canWrite} lists={lists} onReload={onReloadAudiences} />
                 <SegmentsPanel canWrite={canWrite} segments={segments} lists={lists} onReload={onReloadAudiences} />
                 <TemplatesPanel canWrite={canWrite} />
             </div>
@@ -115,140 +109,6 @@ export const SettingsPanels: React.FC<SettingsPanelsProps> = ({
             <AuditPanel canAdmin={canAdmin} />
             <AdminUsersPanel canAdmin={canAdmin} role={role} />
         </div>
-    );
-};
-
-// ---------------------------------------------------------------------------
-// Lists
-// ---------------------------------------------------------------------------
-
-const ListsPanel: React.FC<{ canWrite: boolean; lists: NewsletterList[]; onReload: () => Promise<void> }> = ({
-    canWrite,
-    lists,
-    onReload,
-}) => {
-    const toast = React.useContext(ToastContext);
-    const [name, setName] = useState('');
-    const [description, setDescription] = useState('');
-    const [busy, setBusy] = useState(false);
-    const [deleteTarget, setDeleteTarget] = useState<NewsletterList | null>(null);
-
-    const create = async () => {
-        if (!name.trim()) {
-            toast.push('Informe um nome para a lista.', 'error');
-            return;
-        }
-
-        setBusy(true);
-        try {
-            await createList({ name, description: description || null });
-            setName('');
-            setDescription('');
-            toast.push('Lista criada.', 'success');
-            await onReload();
-        } catch (error) {
-            toast.push(error instanceof Error ? error.message : 'falha ao criar lista', 'error');
-        } finally {
-            setBusy(false);
-        }
-    };
-
-    return (
-        <Card
-            title="Listas"
-            subtitle="Agrupamentos de inscritos usados como público das campanhas. Uma lista pode ser marcada como padrão."
-        >
-            {canWrite ? (
-                <div className="mb-4 grid gap-3 sm:grid-cols-[1fr_1.5fr_auto]">
-                    <Field label="Nome">
-                        {(id) => <Input id={id} value={name} onChange={(event) => setName(event.target.value)} />}
-                    </Field>
-                    <Field label="Descrição">
-                        {(id) => (
-                            <Input id={id} value={description} onChange={(event) => setDescription(event.target.value)} />
-                        )}
-                    </Field>
-                    <div className="flex items-end">
-                        <Button variant="primary" onClick={create} loading={busy} icon={<Plus className="h-3.5 w-3.5" />}>
-                            Adicionar
-                        </Button>
-                    </div>
-                </div>
-            ) : null}
-
-            {lists.length === 0 ? (
-                <EmptyState title="Nenhuma lista" message="Crie ao menos uma lista para organizar o público dos envios." />
-            ) : (
-                <ul className="flex flex-col gap-2">
-                    {lists.map((list) => (
-                        <li
-                            key={list.id}
-                            className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-[var(--theme-border)] px-3 py-2"
-                        >
-                            <div>
-                                <p className="text-sm text-[var(--theme-text-main)]">
-                                    {list.name} {list.is_default ? <Badge tone="gold">padrão</Badge> : null}
-                                </p>
-                                <p className="text-[11px] text-[var(--theme-text-muted)]">
-                                    {list.slug} · dupla confirmação {list.double_opt_in ? 'ativa' : 'desativada'}
-                                </p>
-                            </div>
-
-                            {canWrite ? (
-                                <div className="flex flex-wrap gap-1">
-                                    {!list.is_default ? (
-                                        <Button
-                                            size="sm"
-                                            onClick={async () => {
-                                                await updateList(list.id, { is_default: true });
-                                                // Clear the flag on the others first, otherwise the
-                                                // partial unique index would reject the update.
-                                                const previous = lists.filter((entry) => entry.is_default && entry.id !== list.id);
-                                                for (const entry of previous) await updateList(entry.id, { is_default: false });
-                                                toast.push('Lista padrão atualizada.', 'success');
-                                                await onReload();
-                                            }}
-                                        >
-                                            Tornar padrão
-                                        </Button>
-                                    ) : null}
-                                    <Button
-                                        size="sm"
-                                        variant="ghost"
-                                        onClick={async () => {
-                                            await updateList(list.id, { double_opt_in: !list.double_opt_in });
-                                            await onReload();
-                                        }}
-                                    >
-                                        {list.double_opt_in ? 'Desativar confirmação' : 'Ativar confirmação'}
-                                    </Button>
-                                    <Button size="sm" variant="danger" icon={<Trash2 className="h-3.5 w-3.5" />} onClick={() => setDeleteTarget(list)}>
-                                        Remover
-                                    </Button>
-                                </div>
-                            ) : null}
-                        </li>
-                    ))}
-                </ul>
-            )}
-
-            <ConfirmDialog
-                open={deleteTarget !== null}
-                title="Remover lista"
-                message={`A lista "${deleteTarget?.name ?? ''}" deixará de ser oferecida, mas os inscritos permanecem na base.`}
-                destructive
-                confirmLabel="Remover"
-                onCancel={() => setDeleteTarget(null)}
-                onConfirm={() =>
-                    void (async () => {
-                        if (deleteTarget) await deleteList(deleteTarget.id);
-                        setDeleteTarget(null);
-                        toast.push('Lista removida.', 'success');
-                        await onReload();
-                    })()
-                }
-            />
-        </Card>
     );
 };
 
@@ -281,6 +141,34 @@ const SegmentsPanel: React.FC<{
         } finally {
             setBusy(false);
         }
+    };
+
+    const renderPreviewContent = () => {
+        if (!preview) return null;
+        if (preview.rows.length === 0) {
+            return <EmptyState title="Nenhum inscrito" message="Nenhum registro atende às regras deste segmento." />;
+        }
+        return (
+            <table className="w-full text-sm">
+                <caption className="sr-only">Inscritos no segmento</caption>
+                <thead>
+                    <tr className="text-left text-[11px] uppercase text-[var(--theme-text-muted)]">
+                        <th scope="col" className="py-1">E-mail</th>
+                        <th scope="col" className="py-1">Nome</th>
+                        <th scope="col" className="py-1">Situação</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {preview.rows.map((row) => (
+                        <tr key={row.subscriber_id} className="border-t border-[var(--theme-border)]">
+                            <td className="py-1">{row.email}</td>
+                            <td className="py-1">{row.full_name ?? '—'}</td>
+                            <td className="py-1">{row.status}</td>
+                        </tr>
+                    ))}
+                </tbody>
+            </table>
+        );
     };
 
     return (
@@ -372,31 +260,7 @@ const SegmentsPanel: React.FC<{
                 description="Primeiros inscritos que atendem às regras"
                 width="lg"
             >
-                {preview ? (
-                    preview.rows.length === 0 ? (
-                        <EmptyState title="Nenhum inscrito" message="Nenhum registro atende às regras deste segmento." />
-                    ) : (
-                        <table className="w-full text-sm">
-                            <caption className="sr-only">Inscritos no segmento</caption>
-                            <thead>
-                                <tr className="text-left text-[11px] uppercase text-[var(--theme-text-muted)]">
-                                    <th scope="col" className="py-1">E-mail</th>
-                                    <th scope="col" className="py-1">Nome</th>
-                                    <th scope="col" className="py-1">Situação</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {preview.rows.map((row) => (
-                                    <tr key={row.subscriber_id} className="border-t border-[var(--theme-border)]">
-                                        <td className="py-1">{row.email}</td>
-                                        <td className="py-1">{row.full_name ?? '—'}</td>
-                                        <td className="py-1">{row.status}</td>
-                                    </tr>
-                                ))}
-                            </tbody>
-                        </table>
-                    )
-                ) : null}
+                {renderPreviewContent()}
             </Modal>
 
             <ConfirmDialog
@@ -459,6 +323,55 @@ const SegmentFormModal: React.FC<{
         }
     };
 
+    const getPlaceholder = (condField: string, fieldType?: string) => {
+        if (condField === 'has_tag') return 'uuid da tag';
+        if (fieldType === 'date') return 'AAAA-MM-DD';
+        return 'valor';
+    };
+
+    const getConditionStringValue = (val: unknown): string => {
+        if (typeof val === 'string' || typeof val === 'number') return String(val);
+        return '';
+    };
+
+    const renderConditionValueInput = (
+        condition: SegmentCondition,
+        index: number,
+        field?: (typeof SEGMENT_FIELDS)[number],
+    ) => {
+        if (condition.operator === 'is_null' || condition.operator === 'is_not_null') {
+            return <span className="self-center text-xs text-[var(--theme-text-muted)]">(sem valor)</span>;
+        }
+
+        const valueString = getConditionStringValue(condition.value);
+
+        if (field?.type === 'relation' && condition.field === 'in_list') {
+            return (
+                <Select
+                    aria-label="Lista"
+                    value={valueString}
+                    onChange={(event) => updateCondition(index, { value: event.target.value })}
+                >
+                    <option value="">Selecionar lista…</option>
+                    {lists.map((list) => (
+                        <option key={list.id} value={list.id}>
+                            {list.name}
+                        </option>
+                    ))}
+                </Select>
+            );
+        }
+
+        return (
+            <Input
+                aria-label="Valor"
+                value={valueString}
+                placeholder={getPlaceholder(condition.field, field?.type)}
+                onChange={(event) => updateCondition(index, { value: event.target.value })}
+            />
+        );
+    };
+
     return (
         <Modal
             open
@@ -506,7 +419,7 @@ const SegmentFormModal: React.FC<{
                             const field = SEGMENT_FIELDS.find((entry) => entry.value === condition.field);
 
                             return (
-                                <div key={index} className="grid gap-2 sm:grid-cols-[1.2fr_1fr_1.4fr_auto]">
+                                <div key={`cond-${condition.field}-${index}`} className="grid gap-2 sm:grid-cols-[1.2fr_1fr_1.4fr_auto]">
                                     <Select
                                         aria-label="Campo"
                                         value={condition.field}
@@ -531,35 +444,7 @@ const SegmentFormModal: React.FC<{
                                         ))}
                                     </Select>
 
-                                    {condition.operator === 'is_null' || condition.operator === 'is_not_null' ? (
-                                        <span className="self-center text-xs text-[var(--theme-text-muted)]">(sem valor)</span>
-                                    ) : field?.type === 'relation' && condition.field === 'in_list' ? (
-                                        <Select
-                                            aria-label="Lista"
-                                            value={String(condition.value ?? '')}
-                                            onChange={(event) => updateCondition(index, { value: event.target.value })}
-                                        >
-                                            <option value="">Selecionar lista…</option>
-                                            {lists.map((list) => (
-                                                <option key={list.id} value={list.id}>
-                                                    {list.name}
-                                                </option>
-                                            ))}
-                                        </Select>
-                                    ) : (
-                                        <Input
-                                            aria-label="Valor"
-                                            value={String(condition.value ?? '')}
-                                            placeholder={
-                                                condition.field === 'has_tag'
-                                                    ? 'uuid da tag'
-                                                    : field?.type === 'date'
-                                                        ? 'AAAA-MM-DD'
-                                                        : 'valor'
-                                            }
-                                            onChange={(event) => updateCondition(index, { value: event.target.value })}
-                                        />
-                                    )}
+                                    {renderConditionValueInput(condition, index, field)}
 
                                     <Button
                                         size="sm"
@@ -620,6 +505,58 @@ const TemplatesPanel: React.FC<{ canWrite: boolean }> = ({ canWrite }) => {
         void load();
     }, [load]);
 
+    const renderTemplatesContent = () => {
+        if (loading) {
+            return <Spinner label="Carregando modelos" />;
+        }
+        if (templates.length === 0) {
+            return <EmptyState title="Nenhum modelo" message="Modelos aceleram a montagem de campanhas recorrentes." />;
+        }
+        return (
+            <ul className="flex flex-col gap-2">
+                {templates.map((template) => (
+                    <li
+                        key={template.id}
+                        className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-[var(--theme-border)] px-3 py-2"
+                    >
+                        <div>
+                            <p className="text-sm text-[var(--theme-text-main)]">{template.name}</p>
+                            <p className="text-[11px] text-[var(--theme-text-muted)]">
+                                {template.category} · {template.blocks.length} bloco(s) · atualizado em{' '}
+                                {formatDateTime(template.updated_at)}
+                            </p>
+                        </div>
+
+                        {canWrite ? (
+                            <div className="flex gap-1">
+                                <Button
+                                    size="sm"
+                                    variant="ghost"
+                                    onClick={async () => {
+                                        await updateTemplate(template.id, { is_archived: !template.is_archived });
+                                        await load();
+                                    }}
+                                >
+                                    {template.is_archived ? 'Restaurar' : 'Arquivar'}
+                                </Button>
+                                <Button
+                                    size="sm"
+                                    variant="danger"
+                                    icon={<Trash2 className="h-3.5 w-3.5" />}
+                                    onClick={async () => {
+                                        await deleteTemplate(template.id);
+                                        toast.push('Modelo removido.', 'success');
+                                        await load();
+                                    }}
+                                />
+                            </div>
+                        ) : null}
+                    </li>
+                ))}
+            </ul>
+        );
+    };
+
     return (
         <Card
             title="Modelos"
@@ -666,53 +603,7 @@ const TemplatesPanel: React.FC<{ canWrite: boolean }> = ({ canWrite }) => {
                 </div>
             ) : null}
 
-            {loading ? (
-                <Spinner label="Carregando modelos" />
-            ) : templates.length === 0 ? (
-                <EmptyState title="Nenhum modelo" message="Modelos aceleram a montagem de campanhas recorrentes." />
-            ) : (
-                <ul className="flex flex-col gap-2">
-                    {templates.map((template) => (
-                        <li
-                            key={template.id}
-                            className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-[var(--theme-border)] px-3 py-2"
-                        >
-                            <div>
-                                <p className="text-sm text-[var(--theme-text-main)]">{template.name}</p>
-                                <p className="text-[11px] text-[var(--theme-text-muted)]">
-                                    {template.category} · {template.blocks.length} bloco(s) · atualizado em{' '}
-                                    {formatDateTime(template.updated_at)}
-                                </p>
-                            </div>
-
-                            {canWrite ? (
-                                <div className="flex gap-1">
-                                    <Button
-                                        size="sm"
-                                        variant="ghost"
-                                        onClick={async () => {
-                                            await updateTemplate(template.id, { is_archived: !template.is_archived });
-                                            await load();
-                                        }}
-                                    >
-                                        {template.is_archived ? 'Restaurar' : 'Arquivar'}
-                                    </Button>
-                                    <Button
-                                        size="sm"
-                                        variant="danger"
-                                        icon={<Trash2 className="h-3.5 w-3.5" />}
-                                        onClick={async () => {
-                                            await deleteTemplate(template.id);
-                                            toast.push('Modelo removido.', 'success');
-                                            await load();
-                                        }}
-                                    />
-                                </div>
-                            ) : null}
-                        </li>
-                    ))}
-                </ul>
-            )}
+            {renderTemplatesContent()}
         </Card>
     );
 };
@@ -757,6 +648,79 @@ const ProvidersPanel: React.FC<{ canAdmin: boolean }> = ({ canAdmin }) => {
     useEffect(() => {
         void load();
     }, [load]);
+
+    const buildProviderConfig = () => {
+        if (form.kind === 'smtp') {
+            return { host: form.host, port: Number(form.port), username: form.username };
+        }
+        if (form.kind === 'mailgun') {
+            return { domain: form.domain };
+        }
+        return {};
+    };
+
+    const renderProvidersContent = () => {
+        if (loading) {
+            return <Spinner label="Carregando provedores" />;
+        }
+        if (providers.length === 0) {
+            return (
+                <EmptyState
+                    title="Nenhum provedor configurado"
+                    message="Sem um provedor ativo o disparo é bloqueado com uma mensagem explícita, em vez de falhar silenciosamente."
+                />
+            );
+        }
+        return (
+            <ul className="flex flex-col gap-2">
+                {providers.map((provider) => (
+                    <li
+                        key={provider.id}
+                        className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-[var(--theme-border)] px-3 py-2"
+                    >
+                        <div>
+                            <p className="text-sm text-[var(--theme-text-main)]">
+                                {provider.name} <Badge tone="neutral">{PROVIDER_LABELS[provider.kind]}</Badge>{' '}
+                                {provider.is_default ? <Badge tone="gold">padrão</Badge> : null}{' '}
+                                {!provider.is_active ? <Badge tone="warning">inativo</Badge> : null}
+                            </p>
+                            <p className="text-[11px] text-[var(--theme-text-muted)]">
+                                segredo: {provider.secret_ref ?? '—'} · webhook: {provider.webhook_secret_ref ?? '—'} · limite{' '}
+                                {provider.per_second_limit}/s
+                                {provider.daily_limit ? ` · ${formatInteger(provider.daily_limit)}/dia` : ''}
+                            </p>
+                        </div>
+
+                        {canAdmin ? (
+                            <div className="flex flex-wrap gap-1">
+                                <Button
+                                    size="sm"
+                                    onClick={async () => {
+                                        await setDefaultProvider(provider.id);
+                                        toast.push('Provedor padrão atualizado.', 'success');
+                                        await load();
+                                    }}
+                                >
+                                    Tornar padrão
+                                </Button>
+                                <Button
+                                    size="sm"
+                                    variant="ghost"
+                                    onClick={async () => {
+                                        await updateProvider(provider.id, { is_active: !provider.is_active });
+                                        await load();
+                                    }}
+                                >
+                                    {provider.is_active ? 'Desativar' : 'Ativar'}
+                                </Button>
+                                <Button size="sm" variant="danger" icon={<Trash2 className="h-3.5 w-3.5" />} onClick={() => setDeleteTarget(provider)} />
+                            </div>
+                        ) : null}
+                    </li>
+                ))}
+            </ul>
+        );
+    };
 
     return (
         <Card
@@ -892,12 +856,7 @@ const ProvidersPanel: React.FC<{ canAdmin: boolean }> = ({ canAdmin }) => {
                                         webhook_secret_ref: form.webhook_secret_ref || null,
                                         per_second_limit: form.per_second_limit,
                                         daily_limit: form.daily_limit ? Number(form.daily_limit) : null,
-                                        config:
-                                            form.kind === 'smtp'
-                                                ? { host: form.host, port: Number(form.port), username: form.username }
-                                                : form.kind === 'mailgun'
-                                                    ? { domain: form.domain }
-                                                    : {},
+                                        config: buildProviderConfig(),
                                     });
                                     toast.push('Provedor criado. Ative-o ou defina como padrão para ser usado.', 'success');
                                     await load();
@@ -915,62 +874,7 @@ const ProvidersPanel: React.FC<{ canAdmin: boolean }> = ({ canAdmin }) => {
             ) : null}
 
             <div className="mt-4">
-                {loading ? (
-                    <Spinner label="Carregando provedores" />
-                ) : providers.length === 0 ? (
-                    <EmptyState
-                        title="Nenhum provedor configurado"
-                        message="Sem um provedor ativo o disparo é bloqueado com uma mensagem explícita, em vez de falhar silenciosamente."
-                    />
-                ) : (
-                    <ul className="flex flex-col gap-2">
-                        {providers.map((provider) => (
-                            <li
-                                key={provider.id}
-                                className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-[var(--theme-border)] px-3 py-2"
-                            >
-                                <div>
-                                    <p className="text-sm text-[var(--theme-text-main)]">
-                                        {provider.name} <Badge tone="neutral">{PROVIDER_LABELS[provider.kind]}</Badge>{' '}
-                                        {provider.is_default ? <Badge tone="gold">padrão</Badge> : null}{' '}
-                                        {!provider.is_active ? <Badge tone="warning">inativo</Badge> : null}
-                                    </p>
-                                    <p className="text-[11px] text-[var(--theme-text-muted)]">
-                                        segredo: {provider.secret_ref ?? '—'} · webhook: {provider.webhook_secret_ref ?? '—'} · limite{' '}
-                                        {provider.per_second_limit}/s
-                                        {provider.daily_limit ? ` · ${formatInteger(provider.daily_limit)}/dia` : ''}
-                                    </p>
-                                </div>
-
-                                {canAdmin ? (
-                                    <div className="flex flex-wrap gap-1">
-                                        <Button
-                                            size="sm"
-                                            onClick={async () => {
-                                                await setDefaultProvider(provider.id);
-                                                toast.push('Provedor padrão atualizado.', 'success');
-                                                await load();
-                                            }}
-                                        >
-                                            Tornar padrão
-                                        </Button>
-                                        <Button
-                                            size="sm"
-                                            variant="ghost"
-                                            onClick={async () => {
-                                                await updateProvider(provider.id, { is_active: !provider.is_active });
-                                                await load();
-                                            }}
-                                        >
-                                            {provider.is_active ? 'Desativar' : 'Ativar'}
-                                        </Button>
-                                        <Button size="sm" variant="danger" icon={<Trash2 className="h-3.5 w-3.5" />} onClick={() => setDeleteTarget(provider)} />
-                                    </div>
-                                ) : null}
-                            </li>
-                        ))}
-                    </ul>
-                )}
+                {renderProvidersContent()}
             </div>
 
             <ConfirmDialog
@@ -1180,6 +1084,44 @@ const AuditPanel: React.FC<{ canAdmin: boolean }> = ({ canAdmin }) => {
         void load();
     }, [load]);
 
+    const renderAuditLogsContent = () => {
+        if (loading) {
+            return <Spinner label="Carregando auditoria" />;
+        }
+        if (logs.length === 0) {
+            return <EmptyState title="Nenhum registro" message="Ações administrativas aparecerão aqui conforme forem executadas." />;
+        }
+        return (
+            <div className="max-h-[420px] overflow-y-auto">
+                <table className="w-full text-xs">
+                    <caption className="sr-only">Trilha de auditoria</caption>
+                    <thead className="sticky top-0 bg-[var(--theme-card)]">
+                        <tr className="text-left text-[var(--theme-text-muted)]">
+                            <th scope="col" className="py-1">Data</th>
+                            <th scope="col" className="py-1">Ator</th>
+                            <th scope="col" className="py-1">Ação</th>
+                            <th scope="col" className="py-1">Entidade</th>
+                            <th scope="col" className="py-1">Resumo</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {logs.map((log) => (
+                            <tr key={log.id} className="border-t border-[var(--theme-border)]">
+                                <td className="py-1 whitespace-nowrap">{formatDateTime(log.created_at)}</td>
+                                <td className="py-1">{log.actor_email ?? '—'}</td>
+                                <td className="py-1">
+                                    <Badge tone="neutral">{log.action}</Badge>
+                                </td>
+                                <td className="py-1">{log.entity_type}</td>
+                                <td className="py-1 text-[var(--theme-text-muted)]">{log.summary ?? '—'}</td>
+                            </tr>
+                        ))}
+                    </tbody>
+                </table>
+            </div>
+        );
+    };
+
     if (!canAdmin) {
         return (
             <Card title="Trilha de auditoria">
@@ -1210,39 +1152,7 @@ const AuditPanel: React.FC<{ canAdmin: boolean }> = ({ canAdmin }) => {
             </div>
 
             <div className="mt-4">
-                {loading ? (
-                    <Spinner label="Carregando auditoria" />
-                ) : logs.length === 0 ? (
-                    <EmptyState title="Nenhum registro" message="Ações administrativas aparecerão aqui conforme forem executadas." />
-                ) : (
-                    <div className="max-h-[420px] overflow-y-auto">
-                        <table className="w-full text-xs">
-                            <caption className="sr-only">Trilha de auditoria</caption>
-                            <thead className="sticky top-0 bg-[var(--theme-card)]">
-                                <tr className="text-left text-[var(--theme-text-muted)]">
-                                    <th scope="col" className="py-1">Data</th>
-                                    <th scope="col" className="py-1">Ator</th>
-                                    <th scope="col" className="py-1">Ação</th>
-                                    <th scope="col" className="py-1">Entidade</th>
-                                    <th scope="col" className="py-1">Resumo</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {logs.map((log) => (
-                                    <tr key={log.id} className="border-t border-[var(--theme-border)]">
-                                        <td className="py-1 whitespace-nowrap">{formatDateTime(log.created_at)}</td>
-                                        <td className="py-1">{log.actor_email ?? '—'}</td>
-                                        <td className="py-1">
-                                            <Badge tone="neutral">{log.action}</Badge>
-                                        </td>
-                                        <td className="py-1">{log.entity_type}</td>
-                                        <td className="py-1 text-[var(--theme-text-muted)]">{log.summary ?? '—'}</td>
-                                    </tr>
-                                ))}
-                            </tbody>
-                        </table>
-                    </div>
-                )}
+                {renderAuditLogsContent()}
             </div>
         </Card>
     );
@@ -1284,6 +1194,107 @@ const AdminUsersPanel: React.FC<{ canAdmin: boolean; role: AdminRole | null }> =
         if (role === 'master_admin') void load();
         else setLoading(false);
     }, [load, role]);
+
+    const renderUsersTableContent = () => {
+        if (loading) {
+            return <Spinner label="Carregando usuários" />;
+        }
+        if (users.length === 0) {
+            return <EmptyState title="Nenhum usuário" message="Crie o primeiro usuário administrativo acima." />;
+        }
+        return (
+            <table className="w-full text-sm">
+                <caption className="sr-only">Usuários administrativos</caption>
+                <thead>
+                    <tr className="text-left text-[11px] uppercase text-[var(--theme-text-muted)]">
+                        <th scope="col" className="py-1">Usuário</th>
+                        <th scope="col" className="py-1">Perfil</th>
+                        <th scope="col" className="py-1">Acesso</th>
+                        <th scope="col" className="py-1 text-right">Ações</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {users.map((user) => (
+                        <tr key={user.user_id} className="border-t border-[var(--theme-border)]">
+                            <td className="py-1">
+                                <p className="text-[var(--theme-text-main)]">{user.full_name ?? '—'}</p>
+                                <p className="text-[11px] text-[var(--theme-text-muted)]">{user.email}</p>
+                            </td>
+                            <td className="py-1">
+                                <Select
+                                    aria-label={`Perfil de ${user.email}`}
+                                    value={user.role}
+                                    disabled={busy || degraded !== null || user.user_id === undefined}
+                                    onChange={async (event) => {
+                                        try {
+                                            await setAdminUserRole(user.user_id, event.target.value as AdminRole);
+                                            toast.push('Perfil atualizado.', 'success');
+                                            await load();
+                                        } catch (error) {
+                                            toast.push(error instanceof Error ? error.message : 'falha ao alterar perfil', 'error');
+                                        }
+                                    }}
+                                >
+                                    {Object.entries(ADMIN_ROLE_LABELS).map(([value, label]) => (
+                                        <option key={value} value={value}>
+                                            {label}
+                                        </option>
+                                    ))}
+                                </Select>
+                            </td>
+                            <td className="py-1">
+                                {user.is_active ? <Badge tone="success">ativo</Badge> : <Badge tone="warning">sem acesso</Badge>}
+                            </td>
+                            <td className="py-1">
+                                <div className="flex justify-end gap-1">
+                                    <Button
+                                        size="sm"
+                                        variant="ghost"
+                                        disabled={degraded !== null}
+                                        onClick={async () => {
+                                            try {
+                                                await setAdminUserActive(user.user_id, !user.is_active);
+                                                toast.push(user.is_active ? 'Acesso revogado.' : 'Acesso liberado.', 'success');
+                                                await load();
+                                            } catch (error) {
+                                                toast.push(error instanceof Error ? error.message : 'falha ao alterar acesso', 'error');
+                                            }
+                                        }}
+                                    >
+                                        {user.is_active ? 'Revogar' : 'Liberar'}
+                                    </Button>
+                                    <Button
+                                        size="sm"
+                                        variant="ghost"
+                                        disabled={degraded !== null}
+                                        onClick={async () => {
+                                            try {
+                                                const result = await generateRecoveryLink(user.user_id);
+                                                setRecoveryLink(result.recovery_link);
+                                                toast.push('Link de recuperação gerado.', 'success');
+                                            } catch (error) {
+                                                toast.push(error instanceof Error ? error.message : 'falha ao gerar link', 'error');
+                                            }
+                                        }}
+                                    >
+                                        Recuperar senha
+                                    </Button>
+                                    <Button
+                                        size="sm"
+                                        variant="danger"
+                                        disabled={degraded !== null}
+                                        icon={<Trash2 className="h-3.5 w-3.5" />}
+                                        aria-label={`Excluir ${user.email}`}
+                                        onClick={() => setDeleteTarget(user)}
+                                    />
+                                </div>
+                            </td>
+                        </tr>
+                    ))}
+                </tbody>
+            </table>
+        );
+    };
 
     if (role !== 'master_admin') {
         return (
@@ -1373,102 +1384,7 @@ const AdminUsersPanel: React.FC<{ canAdmin: boolean; role: AdminRole | null }> =
             ) : null}
 
             <div className="mt-4">
-                {loading ? (
-                    <Spinner label="Carregando usuários" />
-                ) : users.length === 0 ? (
-                    <EmptyState title="Nenhum usuário" message="Crie o primeiro usuário administrativo acima." />
-                ) : (
-                    <table className="w-full text-sm">
-                        <caption className="sr-only">Usuários administrativos</caption>
-                        <thead>
-                            <tr className="text-left text-[11px] uppercase text-[var(--theme-text-muted)]">
-                                <th scope="col" className="py-1">Usuário</th>
-                                <th scope="col" className="py-1">Perfil</th>
-                                <th scope="col" className="py-1">Acesso</th>
-                                <th scope="col" className="py-1 text-right">Ações</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {users.map((user) => (
-                                <tr key={user.user_id} className="border-t border-[var(--theme-border)]">
-                                    <td className="py-1">
-                                        <p className="text-[var(--theme-text-main)]">{user.full_name ?? '—'}</p>
-                                        <p className="text-[11px] text-[var(--theme-text-muted)]">{user.email}</p>
-                                    </td>
-                                    <td className="py-1">
-                                        <Select
-                                            aria-label={`Perfil de ${user.email}`}
-                                            value={user.role}
-                                            disabled={busy || degraded !== null || user.user_id === undefined}
-                                            onChange={async (event) => {
-                                                try {
-                                                    await setAdminUserRole(user.user_id, event.target.value as AdminRole);
-                                                    toast.push('Perfil atualizado.', 'success');
-                                                    await load();
-                                                } catch (error) {
-                                                    toast.push(error instanceof Error ? error.message : 'falha ao alterar perfil', 'error');
-                                                }
-                                            }}
-                                        >
-                                            {Object.entries(ADMIN_ROLE_LABELS).map(([value, label]) => (
-                                                <option key={value} value={value}>
-                                                    {label}
-                                                </option>
-                                            ))}
-                                        </Select>
-                                    </td>
-                                    <td className="py-1">
-                                        {user.is_active ? <Badge tone="success">ativo</Badge> : <Badge tone="warning">sem acesso</Badge>}
-                                    </td>
-                                    <td className="py-1">
-                                        <div className="flex justify-end gap-1">
-                                            <Button
-                                                size="sm"
-                                                variant="ghost"
-                                                disabled={degraded !== null}
-                                                onClick={async () => {
-                                                    try {
-                                                        await setAdminUserActive(user.user_id, !user.is_active);
-                                                        toast.push(user.is_active ? 'Acesso revogado.' : 'Acesso liberado.', 'success');
-                                                        await load();
-                                                    } catch (error) {
-                                                        toast.push(error instanceof Error ? error.message : 'falha ao alterar acesso', 'error');
-                                                    }
-                                                }}
-                                            >
-                                                {user.is_active ? 'Revogar' : 'Liberar'}
-                                            </Button>
-                                            <Button
-                                                size="sm"
-                                                variant="ghost"
-                                                disabled={degraded !== null}
-                                                onClick={async () => {
-                                                    try {
-                                                        const result = await generateRecoveryLink(user.user_id);
-                                                        setRecoveryLink(result.recovery_link);
-                                                        toast.push('Link de recuperação gerado.', 'success');
-                                                    } catch (error) {
-                                                        toast.push(error instanceof Error ? error.message : 'falha ao gerar link', 'error');
-                                                    }
-                                                }}
-                                            >
-                                                Recuperar senha
-                                            </Button>
-                                            <Button
-                                                size="sm"
-                                                variant="danger"
-                                                disabled={degraded !== null}
-                                                icon={<Trash2 className="h-3.5 w-3.5" />}
-                                                aria-label={`Excluir ${user.email}`}
-                                                onClick={() => setDeleteTarget(user)}
-                                            />
-                                        </div>
-                                    </td>
-                                </tr>
-                            ))}
-                        </tbody>
-                    </table>
-                )}
+                {renderUsersTableContent()}
             </div>
 
             <ConfirmDialog

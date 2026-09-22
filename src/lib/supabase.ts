@@ -6,24 +6,92 @@ import { formatLastSeen, fromLegacyRole, toLegacyRole } from './auth/roles';
 // `import.meta.env` only exists in the Vite bundle. Reading it defensively keeps
 // this module importable from plain Node (scripts/tests/*.ts), so the auth
 // helpers that depend on it stay unit-testable without a browser.
-const env = ((import.meta as ImportMeta & { env?: Record<string, string | undefined> }).env ?? {}) as Record<
-  string,
-  string | undefined
->;
+//
+// The values are resolved LAZILY, on first use, instead of at module-evaluation
+// time. ES module imports are hoisted and evaluated before any top-level
+// statement of the importing file, so a host that injects the environment after
+// the import graph starts (a `dotenv.config()` call, a runtime secret loader, a
+// test bootstrap) would otherwise be invisible: the module would cache
+// `isSupabaseConfigured = false` and `supabase = null` forever, and every auth
+// call would report "Supabase não está configurado" even though the credentials
+// are present. Resolving on demand removes that ordering trap.
+function readEnv(): Record<string, string | undefined> {
+  const viteEnv = (import.meta as ImportMeta & { env?: Record<string, string | undefined> }).env;
+  // `process` is read through `globalThis` so the module stays type-checkable
+  // without pulling in the Node type definitions (the browser bundle has no
+  // `process`, and `@types/node` is not a dependency of the app build).
+  const nodeProcess = (globalThis as { process?: { env?: Record<string, string | undefined> } }).process;
+  const nodeEnv = nodeProcess?.env;
+  return { ...nodeEnv, ...viteEnv };
+}
 
-const supabaseUrl = env.VITE_SUPABASE_URL || '';
-const supabaseAnonKey = env.VITE_SUPABASE_ANON_KEY || '';
+function resolveSupabaseConfig(): { url: string; anonKey: string } {
+  // `readEnv()` already merges `process.env` (Node/test hosts) with
+  // `import.meta.env` (the Vite bundle), with the Vite values taking precedence.
+  const env = readEnv();
+  return {
+    url: env.VITE_SUPABASE_URL || '',
+    anonKey: env.VITE_SUPABASE_ANON_KEY || '',
+  };
+}
 
-export const isSupabaseConfigured = Boolean(
-  supabaseUrl &&
-  supabaseAnonKey &&
-  supabaseUrl.startsWith('http')
-);
+let cachedClient: SupabaseClient | null = null;
+let cachedSignature = '';
 
-// Single Supabase Client instance (or null if not configured)
-export const supabase: SupabaseClient | null = isSupabaseConfigured
-  ? createClient(supabaseUrl, supabaseAnonKey)
-  : null;
+/**
+ * Returns the shared Supabase client, creating it on first use.
+ *
+ * The client is cached against the resolved URL/key pair, so a later change to
+ * the environment (a test that sets the variables after import) produces a new
+ * client instead of silently reusing a `null` one.
+ */
+export function getSupabaseClient(): SupabaseClient | null {
+  const { url, anonKey } = resolveSupabaseConfig();
+  const configured = Boolean(url && anonKey && url.startsWith('http'));
+
+  if (!configured) {
+    cachedClient = null;
+    cachedSignature = '';
+    return null;
+  }
+
+  const signature = `${url}\u0000${anonKey}`;
+  if (cachedClient && cachedSignature === signature) return cachedClient;
+
+  cachedClient = createClient(url, anonKey);
+  cachedSignature = signature;
+  return cachedClient;
+}
+
+/** True when the environment carries a usable Supabase URL + publishable key. */
+export function isSupabaseConfiguredNow(): boolean {
+  const { url, anonKey } = resolveSupabaseConfig();
+  return Boolean(url && anonKey && url.startsWith('http'));
+}
+
+/**
+ * Module-local alias used by the CRUD helpers below.
+ *
+ * It is a *function*, not a captured value, so every call re-resolves the
+ * environment. This is what makes the module safe to import before the host has
+ * populated `process.env` / `import.meta.env`: the first real call sees the
+ * variables, and the `null` return keeps the `if (!client)` guards meaningful.
+ */
+function supabaseClient(): SupabaseClient | null {
+  return getSupabaseClient();
+}
+
+/**
+ * Backwards-compatible view of the configuration flag.
+ *
+ * This is a snapshot taken when the module is first evaluated. It is kept only
+ * for call sites that read the flag once at startup; anything that must react to
+ * an environment populated after import should call `isSupabaseConfiguredNow()`.
+ *
+ * @deprecated Prefer `isSupabaseConfiguredNow()` so the answer reflects the
+ * environment at the moment of the check instead of at import time.
+ */
+export const isSupabaseConfigured = isSupabaseConfiguredNow();
 
 // Local fallback storage keys for public site content.
 //
@@ -62,9 +130,10 @@ interface AdminUsersPayload {
 
 /** Reads the active admin roster from `public.admin_profiles`. */
 export async function dbFetchAdminUsers(): Promise<AdminUser[]> {
-  if (!isSupabaseConfigured || !supabase) return [];
+  const client = supabaseClient();
+  if (!client) return [];
 
-  const { data, error } = await supabase
+  const { data, error } = await client
     .from('admin_profiles')
     .select('user_id, email, full_name, role, is_active, last_seen_at, created_at')
     .order('created_at', { ascending: true });
@@ -110,7 +179,8 @@ export async function dbCreateAdminUser(newUser: {
   role: 'Master Admin' | 'Sócio Titular' | 'Advogado Associado';
   password?: string;
 }): Promise<{ user: AdminUser | null; error: string | null; recoveryLink?: string | null }> {
-  if (!isSupabaseConfigured || !supabase) {
+  const client = supabaseClient();
+  if (!client) {
     return { user: null, error: 'Supabase não está configurado: não é possível provisionar contas.' };
   }
 
@@ -121,7 +191,7 @@ export async function dbCreateAdminUser(newUser: {
     return { user: null, error: 'Informe o nome completo e o e-mail institucional do usuário.' };
   }
 
-  const { data, error } = await supabase.functions.invoke('admin-users', {
+  const { data, error } = await client.functions.invoke('admin-users', {
     body: {
       action: 'create',
       email: normalizedEmail,
@@ -163,11 +233,12 @@ export async function dbCreateAdminUser(newUser: {
  * the access token happens to expire.
  */
 export async function dbDeleteAdminUser(userId: string): Promise<{ deleted: boolean; error: string | null }> {
-  if (!isSupabaseConfigured || !supabase) {
+  const client = supabaseClient();
+  if (!client) {
     return { deleted: false, error: 'Supabase não está configurado.' };
   }
 
-  const { data, error } = await supabase.functions.invoke('admin-users', {
+  const { data, error } = await client.functions.invoke('admin-users', {
     body: { action: 'delete', user_id: userId },
   });
 
@@ -250,9 +321,10 @@ function handleSupabaseError(tableName: string, operation: string, error: unknow
 
 // 1. Firm Config
 export async function dbFetchFirmConfig(defaultConfig: FirmConfig): Promise<FirmConfig> {
-  if (isSupabaseConfigured && supabase && !missingTables.has('firm_configs')) {
+  const client = supabaseClient();
+  if (client && !missingTables.has('firm_configs')) {
     try {
-      const { data, error } = await supabase
+      const { data, error } = await client
         .from('firm_configs')
         .select('*')
         .limit(1)
@@ -260,7 +332,7 @@ export async function dbFetchFirmConfig(defaultConfig: FirmConfig): Promise<Firm
 
       if (error) {
         handleSupabaseError('firm_configs', 'select', error);
-      } else if (data && data.config_json) {
+      } else if (data?.config_json) {
         return data.config_json as FirmConfig;
       }
     } catch (err) {
@@ -286,9 +358,10 @@ export async function dbSaveFirmConfig(config: FirmConfig): Promise<boolean> {
     console.warn('Falha ao salvar firm_config no localStorage:', err);
   }
 
-  if (isSupabaseConfigured && supabase && !missingTables.has('firm_configs')) {
+  const client = supabaseClient();
+  if (client && !missingTables.has('firm_configs')) {
     try {
-      const { error } = await supabase.from('firm_configs').upsert({
+      const { error } = await client.from('firm_configs').upsert({
         id: 1,
         firm_name: config.firmName,
         instance_id: config.instanceId,
@@ -310,16 +383,17 @@ export async function dbSaveFirmConfig(config: FirmConfig): Promise<boolean> {
 
 // 2. Intake Protocols
 export async function dbFetchIntakes(defaultIntakes: IntakeProtocol[]): Promise<IntakeProtocol[]> {
-  if (isSupabaseConfigured && supabase && !missingTables.has('intake_protocols')) {
+  const client = supabaseClient();
+  if (client && !missingTables.has('intake_protocols')) {
     try {
-      const { data, error } = await supabase
+      const { data, error } = await client
         .from('intake_protocols')
         .select('*')
         .order('created_at', { ascending: false });
 
       if (error) {
         handleSupabaseError('intake_protocols', 'select', error);
-      } else if (data && data.length > 0) {
+      } else if (data?.length) {
         return data.map((row) => ({
           id: row.id,
           protocolCode: row.protocol_code,
@@ -358,9 +432,10 @@ export async function dbInsertIntake(intake: IntakeProtocol): Promise<boolean> {
     // Ignore error
   }
 
-  if (isSupabaseConfigured && supabase && !missingTables.has('intake_protocols')) {
+  const client = supabaseClient();
+  if (client && !missingTables.has('intake_protocols')) {
     try {
-      const { error } = await supabase.from('intake_protocols').insert({
+      const { error } = await client.from('intake_protocols').insert({
         id: intake.id,
         protocol_code: intake.protocolCode,
         client_name: intake.clientName,
@@ -394,9 +469,10 @@ export async function dbUpdateIntakeStatus(
   const updated = currentList.map((i) => (i.id === id ? { ...i, status: newStatus } : i));
   localStorage.setItem(STORAGE_KEYS.INTAKES, JSON.stringify(updated));
 
-  if (isSupabaseConfigured && supabase && !missingTables.has('intake_protocols')) {
+  const client = supabaseClient();
+  if (client && !missingTables.has('intake_protocols')) {
     try {
-      const { error } = await supabase
+      const { error } = await client
         .from('intake_protocols')
         .update({ status: newStatus, updated_at: new Date().toISOString() })
         .eq('id', id);
@@ -414,9 +490,10 @@ export async function dbDeleteIntake(id: string, currentList: IntakeProtocol[]):
   const filtered = currentList.filter((i) => i.id !== id);
   localStorage.setItem(STORAGE_KEYS.INTAKES, JSON.stringify(filtered));
 
-  if (isSupabaseConfigured && supabase && !missingTables.has('intake_protocols')) {
+  const client = supabaseClient();
+  if (client && !missingTables.has('intake_protocols')) {
     try {
-      const { error } = await supabase.from('intake_protocols').delete().eq('id', id);
+      const { error } = await client.from('intake_protocols').delete().eq('id', id);
       if (error) {
         handleSupabaseError('intake_protocols', 'delete', error);
       }
@@ -429,12 +506,13 @@ export async function dbDeleteIntake(id: string, currentList: IntakeProtocol[]):
 
 // 3. Practice Areas
 export async function dbFetchPractices(defaultPractices: PracticeArea[]): Promise<PracticeArea[]> {
-  if (isSupabaseConfigured && supabase && !missingTables.has('practice_areas')) {
+  const client = supabaseClient();
+  if (client && !missingTables.has('practice_areas')) {
     try {
-      const { data, error } = await supabase.from('practice_areas').select('*');
+      const { data, error } = await client.from('practice_areas').select('*');
       if (error) {
         handleSupabaseError('practice_areas', 'select', error);
-      } else if (data && data.length > 0) {
+      } else if (data?.length) {
         return data.map((p) => ({
           id: p.id,
           title: p.title,
@@ -463,9 +541,10 @@ export async function dbInsertPractice(practice: PracticeArea, currentList: Prac
   const updated = [...currentList, practice];
   localStorage.setItem(STORAGE_KEYS.PRACTICES, JSON.stringify(updated));
 
-  if (isSupabaseConfigured && supabase && !missingTables.has('practice_areas')) {
+  const client = supabaseClient();
+  if (client && !missingTables.has('practice_areas')) {
     try {
-      const { error } = await supabase.from('practice_areas').insert({
+      const { error } = await client.from('practice_areas').insert({
         id: practice.id,
         title: practice.title,
         category: practice.category,
@@ -487,12 +566,13 @@ export async function dbInsertPractice(practice: PracticeArea, currentList: Prac
 
 // 4. Law Review Articles
 export async function dbFetchArticles(defaultArticles: LawReviewArticle[]): Promise<LawReviewArticle[]> {
-  if (isSupabaseConfigured && supabase && !missingTables.has('law_review_articles')) {
+  const client = supabaseClient();
+  if (client && !missingTables.has('law_review_articles')) {
     try {
-      const { data, error } = await supabase.from('law_review_articles').select('*');
+      const { data, error } = await client.from('law_review_articles').select('*');
       if (error) {
         handleSupabaseError('law_review_articles', 'select', error);
-      } else if (data && data.length > 0) {
+      } else if (data?.length) {
         return data.map((a) => ({
           id: a.id,
           title: a.title,
@@ -523,9 +603,10 @@ export async function dbInsertArticle(article: LawReviewArticle, currentList: La
   const updated = [article, ...currentList];
   localStorage.setItem(STORAGE_KEYS.ARTICLES, JSON.stringify(updated));
 
-  if (isSupabaseConfigured && supabase && !missingTables.has('law_review_articles')) {
+  const client = supabaseClient();
+  if (client && !missingTables.has('law_review_articles')) {
     try {
-      const { error } = await supabase.from('law_review_articles').insert({
+      const { error } = await client.from('law_review_articles').insert({
         id: article.id,
         title: article.title,
         category: article.category,
@@ -558,9 +639,10 @@ export async function dbInsertSubscriber(email: string, area: string): Promise<b
     // Ignore error
   }
 
-  if (isSupabaseConfigured && supabase && !missingTables.has('newsletter_subscribers')) {
+  const client = supabaseClient();
+  if (client && !missingTables.has('newsletter_subscribers')) {
     try {
-      const { error } = await supabase.from('newsletter_subscribers').insert({
+      const { error } = await client.from('newsletter_subscribers').insert({
         email,
         preference_area: area,
         created_at: new Date().toISOString(),

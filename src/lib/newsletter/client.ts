@@ -9,7 +9,7 @@
  *      table X", which reads like a bug rather than a permissions problem.
  */
 
-import { supabase } from '../supabase';
+import { getSupabaseClient } from '../supabase';
 
 export class NewsletterError extends Error {
     constructor(
@@ -23,6 +23,7 @@ export class NewsletterError extends Error {
 }
 
 export function getClient() {
+    const supabase = getSupabaseClient();
     if (!supabase) {
         throw new NewsletterError(
             'Supabase não está configurado. Defina VITE_SUPABASE_URL e VITE_SUPABASE_ANON_KEY no .env.',
@@ -117,7 +118,7 @@ export interface PageResult<T> {
 
 /** Escapes a value for use inside a PostgREST `or=(...)` filter. */
 export function escapeFilterValue(value: string): string {
-    return value.replace(/[,()\\]/g, (match) => `\\${match}`).replace(/\*/g, '');
+    return value.replaceAll(/[,()\\]/g, (match) => `\\${match}`).replaceAll('*', '');
 }
 
 export function formatPercent(value: number | null | undefined, digits = 2): string {

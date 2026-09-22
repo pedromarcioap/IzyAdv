@@ -305,6 +305,19 @@ export interface NewsletterList {
     description: string | null;
     is_default: boolean;
     double_opt_in: boolean;
+    /** Business meaning of the list; drives the default opt-in and import profile. */
+    kind: NewsletterListKind;
+    /** `private` lists are hidden from non-owners in the UI (RLS stays role based). */
+    visibility: NewsletterListVisibility;
+    /** How contacts enter the list. `double` requires confirmation before targeting. */
+    opt_in_policy: NewsletterListOptIn;
+    owner_id: string | null;
+    color: string;
+    /** Denormalised counters maintained by triggers; never trusted for billing. */
+    member_count: number;
+    active_count: number;
+    last_import_at: string | null;
+    import_settings: Record<string, unknown>;
     created_at: string;
     updated_at: string;
     deleted_at: string | null;
@@ -671,4 +684,314 @@ export interface SegmentPreviewRow {
     full_name: string | null;
     status: string;
     source: string;
+}
+
+// ---------------------------------------------------------------------------
+// List management (kinds, visibility, opt-in)
+// ---------------------------------------------------------------------------
+
+export type NewsletterListKind =
+    | 'email'
+    | 'lead'
+    | 'engagement'
+    | 'suppression'
+    | 'partner'
+    | 'event'
+    | 'custom';
+
+export const LIST_KIND_LABELS: Record<NewsletterListKind, string> = {
+    email: 'Informativo',
+    lead: 'Leads',
+    engagement: 'Engajamento',
+    suppression: 'Supressão',
+    partner: 'Parceiros',
+    event: 'Eventos',
+    custom: 'Personalizada',
+};
+
+export const LIST_KIND_HINTS: Record<NewsletterListKind, string> = {
+    email: 'Assinantes do informativo jurídico.',
+    lead: 'Contatos em prospecção, ainda sem relação comercial.',
+    engagement: 'Quem abriu ou clicou recentemente; use para reengajamento.',
+    suppression: 'Nunca deve receber campanhas (descadastrados, reclamações).',
+    partner: 'Parceiros e escritórios correspondentes.',
+    event: 'Inscritos de eventos, webinars e palestras.',
+    custom: 'Lista livre para um uso específico.',
+};
+
+export type NewsletterListVisibility = 'shared' | 'private';
+
+export const LIST_VISIBILITY_LABELS: Record<NewsletterListVisibility, string> = {
+    shared: 'Compartilhada',
+    private: 'Privada',
+};
+
+export type NewsletterListOptIn = 'single' | 'double' | 'imported' | 'transactional';
+
+export const LIST_OPT_IN_LABELS: Record<NewsletterListOptIn, string> = {
+    single: 'Opt-in simples',
+    double: 'Opt-in duplo',
+    imported: 'Importada',
+    transactional: 'Transacional',
+};
+
+/** Per-list counters and the latest import status, from `newsletter_list_stats`. */
+export interface NewsletterListStats {
+    list_id: string;
+    kind: NewsletterListKind;
+    visibility: NewsletterListVisibility;
+    opt_in_policy: NewsletterListOptIn;
+    member_count: number;
+    active_count: number;
+    pending_count: number;
+    unsubscribed_count: number;
+    last_import_at: string | null;
+    last_import_status: NewsletterImportStatus | null;
+}
+
+/** A subscriber's membership in a list, joined with the subscriber summary. */
+export interface NewsletterListMember {
+    list_id: string;
+    subscriber_id: string;
+    status: SubscriberStatus;
+    joined_at: string;
+    updated_at: string;
+    email: string;
+    name: string | null;
+    company: string | null;
+    job_title: string | null;
+    source: ConsentSource;
+}
+
+// ---------------------------------------------------------------------------
+// CRM contacts
+// ---------------------------------------------------------------------------
+
+export type CrmContactStatus =
+    | 'lead'
+    | 'qualified'
+    | 'customer'
+    | 'partner'
+    | 'inactive'
+    | 'blocked';
+
+export const CRM_CONTACT_STATUS_LABELS: Record<CrmContactStatus, string> = {
+    lead: 'Lead',
+    qualified: 'Qualificado',
+    customer: 'Cliente',
+    partner: 'Parceiro',
+    inactive: 'Inativo',
+    blocked: 'Bloqueado',
+};
+
+export interface CrmContact {
+    id: string;
+    email: string;
+    full_name: string | null;
+    company: string | null;
+    job_title: string | null;
+    phone: string | null;
+    document: string | null;
+    status: CrmContactStatus;
+    owner_id: string | null;
+    source: ConsentSource;
+    source_detail: string | null;
+    tags: string[];
+    custom_fields: Record<string, unknown>;
+    notes: string | null;
+    last_activity_at: string | null;
+    created_by: string | null;
+    created_at: string;
+    updated_at: string;
+    deleted_at: string | null;
+}
+
+// ---------------------------------------------------------------------------
+// Bulk import
+// ---------------------------------------------------------------------------
+
+export type NewsletterImportStatus =
+    | 'draft'
+    | 'validating'
+    | 'ready'
+    | 'importing'
+    | 'completed'
+    | 'failed'
+    | 'canceled';
+
+export const IMPORT_STATUS_LABELS: Record<NewsletterImportStatus, string> = {
+    draft: 'Rascunho',
+    validating: 'Validando',
+    ready: 'Pronto',
+    importing: 'Importando',
+    completed: 'Concluída',
+    failed: 'Falhou',
+    canceled: 'Cancelada',
+};
+
+export type NewsletterImportSource = 'csv' | 'paste' | 'json' | 'api';
+
+export const IMPORT_SOURCE_LABELS: Record<NewsletterImportSource, string> = {
+    csv: 'Arquivo CSV',
+    paste: 'Colagem em massa',
+    json: 'JSON',
+    api: 'API',
+};
+
+export type NewsletterImportRowStatus =
+    | 'valid'
+    | 'invalid'
+    | 'duplicate_in_file'
+    | 'duplicate_in_base'
+    | 'imported'
+    | 'updated'
+    | 'skipped'
+    | 'failed';
+
+export const IMPORT_ROW_STATUS_LABELS: Record<NewsletterImportRowStatus, string> = {
+    valid: 'Válida',
+    invalid: 'Inválida',
+    duplicate_in_file: 'Duplicada no arquivo',
+    duplicate_in_base: 'Já existente na base',
+    imported: 'Importada',
+    updated: 'Atualizada',
+    skipped: 'Ignorada',
+    failed: 'Falhou',
+};
+
+/** Target fields a source column may be mapped onto. */
+export type ImportTargetField =
+    | 'email'
+    | 'name'
+    | 'company'
+    | 'job_title'
+    | 'phone'
+    | 'preference_area'
+    | 'document'
+    | 'ignore';
+
+export const IMPORT_TARGET_LABELS: Record<ImportTargetField, string> = {
+    email: 'E-mail',
+    name: 'Nome',
+    company: 'Empresa',
+    job_title: 'Cargo',
+    phone: 'Telefone',
+    preference_area: 'Área de interesse',
+    document: 'Documento (CPF/CNPJ)',
+    ignore: 'Ignorar coluna',
+};
+
+/** `{ "<source column>": "<target field>" }` chosen by the operator. */
+export type ImportFieldMapping = Record<string, ImportTargetField>;
+
+export interface NewsletterImportOptions {
+    /** Update existing subscribers instead of skipping them. */
+    update_existing: boolean;
+    /** Create/link a CRM contact for every imported row. */
+    create_contacts: boolean;
+    /** Status applied to newly created subscribers. */
+    subscriber_status: SubscriberStatus;
+    /** Consent source recorded on the subscriber. */
+    source: ConsentSource;
+    source_detail: string;
+    consent_text: string;
+}
+
+export const DEFAULT_IMPORT_OPTIONS: NewsletterImportOptions = {
+    update_existing: false,
+    create_contacts: true,
+    subscriber_status: 'active',
+    source: 'admin_import',
+    source_detail: 'importação em lote',
+    consent_text: 'Importação em lote no painel administrativo.',
+};
+
+export interface NewsletterImportJob {
+    id: string;
+    list_id: string | null;
+    status: NewsletterImportStatus;
+    source: NewsletterImportSource;
+    file_name: string | null;
+    file_size_bytes: number | null;
+    delimiter: string;
+    has_header: boolean;
+    source_columns: string[];
+    field_mapping: ImportFieldMapping;
+    options: Partial<NewsletterImportOptions>;
+    total_rows: number;
+    valid_rows: number;
+    invalid_rows: number;
+    duplicate_rows: number;
+    imported_rows: number;
+    updated_rows: number;
+    skipped_rows: number;
+    failed_rows: number;
+    error_summary: string | null;
+    started_at: string | null;
+    completed_at: string | null;
+    created_by: string | null;
+    created_at: string;
+    updated_at: string;
+}
+
+export interface NewsletterImportRow {
+    id: number;
+    job_id: string;
+    line_number: number;
+    email: string | null;
+    status: NewsletterImportRowStatus;
+    reason: string | null;
+    raw: Record<string, unknown>;
+    subscriber_id: string | null;
+    contact_id: string | null;
+    created_at: string;
+}
+
+export interface NewsletterImportPreset {
+    id: string;
+    name: string;
+    description: string | null;
+    source: NewsletterImportSource;
+    delimiter: string;
+    field_mapping: ImportFieldMapping;
+    options: Partial<NewsletterImportOptions>;
+    created_by: string | null;
+    created_at: string;
+    updated_at: string;
+}
+
+/** One row's outcome as returned by `newsletter_import_rows_batch`. */
+export interface ImportRowOutcome {
+    row: number;
+    email: string;
+    status: NewsletterImportRowStatus;
+    reason: string | null;
+    subscriber_id?: string | null;
+    contact_id?: string | null;
+}
+
+/** Chunk summary returned by `newsletter_import_rows_batch`. */
+export interface ImportBatchResult {
+    job_id: string;
+    list_id: string;
+    imported: number;
+    updated: number;
+    duplicates: number;
+    invalid: number;
+    failed: number;
+    outcomes: ImportRowOutcome[];
+}
+
+/** Result of `newsletter_list_sync_members`. */
+export interface ListSyncResult {
+    list_id: string;
+    action: 'add' | 'remove' | 'unsubscribe';
+    affected: number;
+}
+
+/** Result of `newsletter_sync_crm_contacts`. */
+export interface CrmSyncResult {
+    linked: number;
+    contacts_total: number;
+    limit: number;
 }

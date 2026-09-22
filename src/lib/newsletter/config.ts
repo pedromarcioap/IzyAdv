@@ -18,7 +18,7 @@ import type {
     NewsletterSettings,
     SegmentPreviewRow,
 } from '../../types/newsletter';
-import { isSupabaseConfigured } from '../supabase';
+import { isSupabaseConfiguredNow } from '../supabase';
 import { NewsletterError, getClient, run } from './client';
 
 // ---------------------------------------------------------------------------
@@ -38,14 +38,33 @@ export async function listLists(): Promise<NewsletterList[]> {
     return Array.isArray(rows) ? rows : [];
 }
 
+/**
+ * Removes leading and trailing `-` characters using explicit index scanning.
+ * Deliberately avoids `/^-+|-+$/g`: that pattern rescans the hyphen run from
+ * every start index and, because the `$` anchor keeps failing, unwinds the run
+ * one character at a time — O(n²) for an interior run such as `x---…---y`,
+ * while this loop is O(n) plus one `slice()`.
+ *
+ * `codePointAt()` returning 45 means a genuine U+002D: full code points are
+ * compared, so no surrogate half can be mistaken for a hyphen. The `undefined`
+ * it returns off the end of the string is covered by the `start < end` and
+ * `end > start` guards, so no non-null assertion is needed.
+ */
+function trimHyphens(value: string): string {
+    let start = 0;
+    let end = value.length;
+    while (start < end && value.codePointAt(start) === 45) start += 1;
+    while (end > start && value.codePointAt(end - 1) === 45) end -= 1;
+    return start === 0 && end === value.length ? value : value.slice(start, end);
+}
+
 export function slugify(value: string): string {
-    return value
+    const normalized = value
         .normalize('NFD')
         .replace(/[\u0300-\u036f]/g, '')
         .toLowerCase()
-        .replace(/[^a-z0-9]+/g, '-')
-        .replace(/^-+|-+$/g, '')
-        .slice(0, 60);
+        .replace(/[^a-z0-9]+/g, '-');
+    return trimHyphens(normalized).slice(0, 60);
 }
 
 export async function createList(input: {
@@ -370,7 +389,7 @@ update auth.users
  * Never throws: this runs on UI open, so callers always render something.
  */
 export async function resolveNewsletterAccess(): Promise<NewsletterAccess> {
-    if (!isSupabaseConfigured) {
+    if (!isSupabaseConfiguredNow()) {
         return {
             state: 'unconfigured',
             role: null,
