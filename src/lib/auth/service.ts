@@ -478,7 +478,10 @@ export async function markSessionSeen(): Promise<void> {
     const supabase = getSupabaseClient();
     if (!supabase) return;
     try {
-        await supabase.rpc('mark_my_session_seen');
+        const { error } = await supabase.rpc('mark_my_session_seen');
+        if (error) {
+            console.warn('[auth] heartbeat de sessão não registrado:', error.message);
+        }
     } catch (error) {
         console.warn('[auth] heartbeat de sessão não registrado:', error);
     }
@@ -493,11 +496,14 @@ export async function logAuthEvent(action: string, summary: string): Promise<voi
     const supabase = getSupabaseClient();
     if (!supabase) return;
     try {
-        await supabase.rpc('log_my_activity', {
+        const { error } = await supabase.rpc('log_my_activity', {
             p_action: action,
             p_entity_type: 'auth',
             p_summary: summary,
         });
+        if (error) {
+            console.warn('[auth] evento de autenticação não auditado:', error.message);
+        }
     } catch (error) {
         console.warn('[auth] evento de autenticação não auditado:', error);
     }
